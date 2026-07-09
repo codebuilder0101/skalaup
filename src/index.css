@@ -1,0 +1,275 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* SkalaUp — bright, clean & fresh light theme with a soft feminine touch.
+       White canvas, rose/coral brand, and friendly orange / green / blue accents. */
+    --background: 340 50% 99%;
+    --foreground: 230 25% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 230 25% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 230 25% 20%;
+
+    --primary: 340 78% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 340 42% 96%;
+    --secondary-foreground: 335 32% 34%;
+
+    --muted: 320 24% 96%;
+    --muted-foreground: 235 12% 46%;
+
+    --accent: 24 92% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 78% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 330 26% 91%;
+    --input: 330 24% 90%;
+    --ring: 340 78% 60%;
+
+    --radius: 0.85rem;
+
+    --warning: 38 95% 52%;
+    --warning-foreground: 0 0% 100%;
+
+    --success: 150 62% 42%;
+    --success-foreground: 0 0% 100%;
+
+    --info: 205 90% 52%;
+    --info-foreground: 0 0% 100%;
+
+    --sidebar-background: 340 45% 98%;
+    --sidebar-foreground: 235 18% 35%;
+    --sidebar-primary: 340 78% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 340 52% 94%;
+    --sidebar-accent-foreground: 338 44% 32%;
+    --sidebar-border: 335 28% 90%;
+    --sidebar-ring: 340 78% 60%;
+    --sidebar-muted: 235 12% 55%;
+
+    --shift-day: 32 95% 55%;
+    --shift-night: 265 70% 62%;
+    --shift-oncall: 175 65% 40%;
+
+    --status-draft: 235 12% 60%;
+    --status-review: 38 95% 52%;
+    --status-approved: 150 62% 42%;
+    --status-published: 205 90% 52%;
+
+    --font-display: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  .dark {
+    /* Sleek modern dark — deep neutral charcoal surfaces carrying the same
+       rose/coral brand as the light theme (no more teal mismatch). */
+    --background: 240 10% 7%;
+    --foreground: 240 12% 93%;
+
+    --card: 240 9% 11%;
+    --card-foreground: 240 12% 93%;
+
+    --popover: 240 10% 10%;
+    --popover-foreground: 240 12% 93%;
+
+    --primary: 340 82% 62%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 8% 16%;
+    --secondary-foreground: 240 12% 88%;
+
+    --muted: 240 8% 15%;
+    --muted-foreground: 240 9% 62%;
+
+    --accent: 24 90% 58%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 8% 18%;
+    --input: 240 8% 20%;
+    --ring: 340 82% 62%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 240 10% 10%;
+
+    --success: 152 58% 48%;
+    --success-foreground: 0 0% 100%;
+
+    --info: 210 90% 62%;
+    --info-foreground: 0 0% 100%;
+
+    --sidebar-background: 240 11% 6%;
+    --sidebar-foreground: 240 10% 72%;
+    --sidebar-primary: 340 82% 62%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 9% 13%;
+    --sidebar-accent-foreground: 240 12% 90%;
+    --sidebar-border: 240 8% 14%;
+    --sidebar-ring: 340 82% 62%;
+    --sidebar-muted: 240 9% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: var(--font-display);
+    background-image:
+      radial-gradient(1200px 600px at 85% -10%, hsl(var(--primary) / 0.08), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, hsl(var(--accent) / 0.06), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  /* Dark mode: keep only a whisper of brand glow so surfaces read as flat & modern. */
+  .dark body {
+    background-image:
+      radial-gradient(1100px 560px at 88% -12%, hsl(var(--primary) / 0.05), transparent 55%),
+      radial-gradient(820px 460px at -12% 112%, hsl(var(--accent) / 0.04), transparent 55%);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    @apply font-semibold tracking-tight;
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Native time inputs: keep text readable on the light UI */
+  input[type="time"] {
+    color-scheme: light;
+    color: hsl(var(--foreground));
+  }
+}
+
+@layer utilities {
+  .gradient-sidebar {
+    background:
+      linear-gradient(180deg, hsl(var(--sidebar-background)) 0%, hsl(335 45% 96%) 100%);
+  }
+
+  /* Dark sidebar: subtle charcoal gradient with a faint rose tint at the top. */
+  .dark .gradient-sidebar {
+    background:
+      linear-gradient(180deg, hsl(340 22% 9%) 0%, hsl(var(--sidebar-background)) 45%);
+  }
+
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-md border border-border/70;
+    box-shadow:
+      0 10px 30px hsl(335 50% 45% / 0.08),
+      inset 0 1px 0 hsl(0 0% 100% / 0.6);
+  }
+
+  /* Dark glass: deep shadow + a hairline top highlight (no milky white edge). */
+  .dark .glass-card {
+    box-shadow:
+      0 12px 32px hsl(0 0% 0% / 0.45),
+      inset 0 1px 0 hsl(0 0% 100% / 0.06);
+  }
+
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium tracking-wide uppercase;
+  }
+
+  .status-draft {
+    @apply status-badge;
+    background: hsl(var(--status-draft) / 0.12);
+    color: hsl(var(--status-draft));
+  }
+
+  .status-review {
+    @apply status-badge;
+    background: hsl(var(--status-review) / 0.12);
+    color: hsl(var(--status-review));
+  }
+
+  .status-approved {
+    @apply status-badge;
+    background: hsl(var(--status-approved) / 0.12);
+    color: hsl(var(--status-approved));
+  }
+
+  .status-published {
+    @apply status-badge;
+    background: hsl(var(--status-published) / 0.12);
+    color: hsl(var(--status-published));
+  }
+
+  .shift-day {
+    background: hsl(var(--shift-day) / 0.12);
+    color: hsl(var(--shift-day));
+    border-left: 3px solid hsl(var(--shift-day));
+  }
+
+  .shift-night {
+    background: hsl(var(--shift-night) / 0.13);
+    color: hsl(var(--shift-night));
+    border-left: 3px solid hsl(var(--shift-night));
+  }
+
+  .shift-oncall {
+    background: hsl(var(--shift-oncall) / 0.13);
+    color: hsl(var(--shift-oncall));
+    border-left: 3px solid hsl(var(--shift-oncall));
+  }
+
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-subtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+}
+
+@layer base {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--muted));
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.7);
+  }
+}
+
+/*
+ * Unlayered: native time input clock icon — keep the natural dark glyph
+ * visible on the light UI. Placed outside @layer so it wins over Tailwind.
+ */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.7 !important;
+  width: 1.125rem;
+  height: 1.125rem;
+  filter: none !important;
+}

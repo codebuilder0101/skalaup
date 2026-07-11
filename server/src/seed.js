@@ -165,7 +165,7 @@ async function seedScheduling() {
         `insert into public.schedule_assignments
            (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time, status, assigned_via, published_at)
          values ($1,$2,$3,$4,$5,$6,$7,'published','coordinator', now())
-         on conflict (user_id, date, shift_type) do nothing`,
+         on conflict (user_id, date, shift_type) where status <> 'cancelled' do nothing`,
         [cycle.id, centro.id, uid, today, shift, st, et],
       );
     }

@@ -39,6 +39,15 @@ export async function submitAvailability(params: {
   return wrap(api.post<AvailabilitySubmission>("/availability/submissions", params), null);
 }
 
+// Batch: reconcile the freelancer's WHOLE availability for a cycle in one request.
+// `slots` is the complete desired set; the server submits these and cancels the rest.
+export interface DesiredSlot { date: string; shiftType: ShiftType; restaurantId: string | null }
+export async function bulkSubmitAvailability(
+  cycleId: string, userId: string, slots: DesiredSlot[],
+): Promise<Result<AvailabilitySubmission[]>> {
+  return wrap(api.put<AvailabilitySubmission[]>("/availability/submissions/bulk", { cycleId, userId, slots }), []);
+}
+
 // Restaurants the current freelancer may offer availability for (their clients).
 export interface MyClient { id: string; name: string }
 export async function listMyClients(): Promise<Result<MyClient[]>> {

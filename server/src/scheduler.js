@@ -223,13 +223,13 @@ export async function runCycleMaintenance() {
 
   // 2) Remind freelancers while a cycle is open and inside its window (days 20–25).
   const { rows: openCycles } = await pool.query(
-    `select id, reference_month from public.availability_cycles
+    `select id, reference_month::text as reference_month from public.availability_cycles
       where status = 'open' and now() between opens_at and closes_at`,
   );
   for (const c of openCycles) {
     if (await remindedRecently(c.id)) continue;
     const ids = await availabilityUserIds();
-    const month = new Date(c.reference_month).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+    const month = new Date(`${c.reference_month}T00:00:00Z`).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
     for (const uid of ids) {
       await notify({
         recipientUserId: uid,

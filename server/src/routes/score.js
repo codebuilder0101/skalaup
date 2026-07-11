@@ -18,7 +18,7 @@ const SCORE_POINTS = {
 
 const COLS = `id, user_id as "userId", event_type as "eventType", points,
   reference_type as "referenceType", reference_id as "referenceId",
-  occurred_on as "occurredOn", month_ref as "monthRef", created_by as "createdBy",
+  occurred_on::text as "occurredOn", month_ref::text as "monthRef", created_by as "createdBy",
   is_voided as "isVoided", notes, created_at as "createdAt"`;
 
 // Recompute the cached current_score (sum of non-voided events) for a user.

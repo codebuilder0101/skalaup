@@ -456,10 +456,14 @@ export default function SchedulingPage() {
     }
   };
 
-  const dayHeader = (date: string) => ({
-    wd: new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`)),
-    n: Number(date.slice(8, 10)),
-  });
+  const dayHeader = (date: string) => {
+    const d = new Date(`${date}T00:00:00Z`);
+    return {
+      wd: new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" }).format(d),
+      n: Number(date.slice(8, 10)),
+      weekend: [0, 5, 6].includes(d.getUTCDay()), // Fri/Sat/Sun — the most-wanted shifts
+    };
+  };
 
   const onCreatecycle = async () => {
     const monthRef = monthRefOf(range?.start ?? todayIso());
@@ -651,7 +655,7 @@ export default function SchedulingPage() {
                   return (
                     <div key={d.date} className={`p-2 text-center border-l border-border ${isToday ? "bg-primary/10" : ""}`}>
                       <p className="text-[10px] uppercase text-muted-foreground">{h.wd}</p>
-                      <p className={`text-sm font-bold ${isToday ? "text-primary" : "text-foreground"}`}>{h.n}</p>
+                      <p className={`text-sm font-bold ${isToday || h.weekend ? "text-primary" : "text-foreground"}`}>{h.n}</p>
                     </div>
                   );
                 })}

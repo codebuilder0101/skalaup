@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { CalendarDays, Sun, Moon, Loader2, Info, Star, Sparkles } from "lucide-react";
+import { CalendarDays, Sun, Moon, Loader2, Info, Star, Sparkles, CheckCheck, Eraser, Send } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  listCycles, listMyAvailability, submitAvailability, cancelAvailability,
-  listMyClients, listVacancies, type MyClient, type Vacancy,
+  listCycles, listMyAvailability, bulkSubmitAvailability, listMyClients, listVacancies,
+  type MyClient, type Vacancy, type DesiredSlot,
 } from "@/lib/skalaup/availability";
 import { AvailabilityWindowPanel } from "@/components/AvailabilityWindowPanel";
-import type { AvailabilityCycle, AvailabilitySubmission, ShiftType } from "@/lib/skalaup/types";
+import type { AvailabilityCycle, ShiftType } from "@/lib/skalaup/types";
 
 const SHIFTS: ShiftType[] = ["lunch", "dinner"];
 const ANY = "ANY"; // sentinel for "any restaurant / no preference"
@@ -37,9 +38,12 @@ export default function AvailabilityPage() {
   const [cycle, setCycle] = useState<AvailabilityCycle | null>(null);
   const [clients, setClients] = useState<MyClient[]>([]);
   const [vacancies, setVacancies] = useState<Map<string, number>>(new Map());
-  const [subs, setSubs] = useState<AvailabilitySubmission[]>([]);
+  // Local, unsaved draft of the freelancer's picks. Nothing is persisted until
+  // they press "Enviar minha disponibilidade" (§ batch submit).
+  const [draft, setDraft] = useState<Map<string, DesiredSlot>>(new Map());
+  const [serverSet, setServerSet] = useState<Set<string>>(new Set()); // what's persisted
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState<string | null>(null); // slotKey being toggled
+  const [submitting, setSubmitting] = useState(false);
 
   const isOps = user?.role === "coordinator" || user?.role === "administrator";
 
@@ -54,10 +58,17 @@ export default function AvailabilityPage() {
     })();
   }, []);
 
+  // (Re)load the persisted availability into both the draft and the server snapshot.
   const reloadSubs = useCallback(async () => {
-    if (!cycle || !user) { setSubs([]); return; }
+    if (!cycle || !user) { setDraft(new Map()); setServerSet(new Set()); return; }
     const { data } = await listMyAvailability(cycle.id, user.id);
-    setSubs(data);
+    const m = new Map<string, DesiredSlot>();
+    data.filter((s) => s.status === "submitted").forEach((s) => {
+      m.set(slotKey(s.date, s.shiftType, s.restaurantId),
+        { date: dateKey(s.date), shiftType: s.shiftType, restaurantId: s.restaurantId });
+    });
+    setDraft(new Map(m));
+    setServerSet(new Set(m.keys()));
   }, [cycle, user]);
 
   useEffect(() => { void reloadSubs(); }, [reloadSubs]);
@@ -74,17 +85,16 @@ export default function AvailabilityPage() {
   }, [cycle]);
 
   const editable = cycle?.status === "open";
-
-  const subMap = useMemo(() => {
-    const m = new Map<string, AvailabilitySubmission>();
-    subs.filter((s) => s.status === "submitted")
-      .forEach((s) => m.set(slotKey(s.date, s.shiftType, s.restaurantId), s));
-    return m;
-  }, [subs]);
-
-  const selectedCount = subMap.size;
   const days = useMemo(() => (cycle ? daysOfMonth(cycle.referenceMonth) : []), [cycle]);
   const today = new Date().toISOString().slice(0, 10);
+  const selectedCount = draft.size;
+
+  // Unsaved changes: draft differs from the persisted snapshot.
+  const dirty = useMemo(() => {
+    if (draft.size !== serverSet.size) return true;
+    for (const k of draft.keys()) if (!serverSet.has(k)) return true;
+    return false;
+  }, [draft, serverSet]);
 
   const monthLabel = useMemo(() => {
     if (!cycle) return "";
@@ -97,22 +107,53 @@ export default function AvailabilityPage() {
     return {
       wd: new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" }).format(d),
       n: Number(date.slice(8, 10)),
-      weekend: [0, 6].includes(d.getUTCDay()),
+      weekend: [0, 5, 6].includes(d.getUTCDay()), // Fri/Sat/Sun — the most-wanted shifts
     };
   };
 
-  const toggle = async (date: string, shift: ShiftType, restaurantId: string | null) => {
-    if (!cycle || !user || !editable) return;
-    const key = slotKey(date, shift, restaurantId);
-    const existing = subMap.get(key);
-    setPending(key);
-    const { error } = existing
-      ? await cancelAvailability(existing.id)
-      : await submitAvailability({ cycleId: cycle.id, userId: user.id, date, shiftType: shift, restaurantId });
-    setPending(null);
+  // Toggle a slot in the LOCAL draft only. Enforces the any/specific exclusion:
+  // picking "any restaurant" clears specific picks for that slot and vice-versa.
+  const toggle = (date: string, shift: ShiftType, restaurantId: string | null) => {
+    if (!editable) return;
+    setDraft((prev) => {
+      const next = new Map(prev);
+      const k = slotKey(date, shift, restaurantId);
+      if (next.has(k)) { next.delete(k); return next; }
+      if (restaurantId === null) {
+        for (const r of clients) next.delete(slotKey(date, shift, r.id));
+      } else {
+        next.delete(slotKey(date, shift, null));
+      }
+      next.set(k, { date: dateKey(date), shiftType: shift, restaurantId });
+      return next;
+    });
+  };
+
+  // Mark every day + turno as "any restaurant" (one tap; they then unmark what
+  // they can't do). Maximises flexibility, which is what earns the bonus.
+  const selectAll = () => {
+    if (!editable) return;
+    const next = new Map<string, DesiredSlot>();
+    for (const date of days) for (const shift of SHIFTS) {
+      next.set(slotKey(date, shift, null), { date: dateKey(date), shiftType: shift, restaurantId: null });
+    }
+    setDraft(next);
+  };
+  const clearAll = () => { if (editable) setDraft(new Map()); };
+
+  const submit = async () => {
+    if (!cycle || !user || !editable || submitting) return;
+    setSubmitting(true);
+    const { data, error } = await bulkSubmitAvailability(cycle.id, user.id, [...draft.values()]);
+    setSubmitting(false);
     if (error) { toast.error(error.message); return; }
-    if (!existing && restaurantId === null) toast.success(t("skala.availability.flexibleToast"));
-    await reloadSubs();
+    const m = new Map<string, DesiredSlot>();
+    data.filter((s) => s.status === "submitted").forEach((s) =>
+      m.set(slotKey(s.date, s.shiftType, s.restaurantId),
+        { date: dateKey(s.date), shiftType: s.shiftType, restaurantId: s.restaurantId }));
+    setDraft(new Map(m));
+    setServerSet(new Set(m.keys()));
+    toast.success(t("skala.availability.submitted", { count: m.size }));
   };
 
   return (
@@ -166,11 +207,17 @@ export default function AvailabilityPage() {
           </div>
         )}
 
-        {/* Flexibility hint */}
+        {/* Flexibility + review hints */}
         {editable && clients.length > 0 && (
-          <div className="flex items-start gap-2 rounded-xl border border-primary/25 bg-primary/[0.04] px-4 py-2.5 text-sm text-foreground">
-            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <span>{t("skala.availability.anyHint")}</span>
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 rounded-xl border border-primary/25 bg-primary/[0.04] px-4 py-2.5 text-sm text-foreground">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>{t("skala.availability.anyHint")}</span>
+            </div>
+            <div className="flex items-start gap-2 rounded-xl border border-border/60 bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{t("skala.availability.reviewHint")}</span>
+            </div>
           </div>
         )}
 
@@ -196,9 +243,8 @@ export default function AvailabilityPage() {
                     {/* Shifts */}
                     <div className="flex-1 space-y-2.5">
                       {SHIFTS.map((shift) => {
-                        const anyOn = subMap.has(slotKey(date, shift, null));
-                        const specificOn = clients.some((r) => subMap.has(slotKey(date, shift, r.id)));
-                        const anyKey = slotKey(date, shift, null);
+                        const anyOn = draft.has(slotKey(date, shift, null));
+                        const specificOn = clients.some((r) => draft.has(slotKey(date, shift, r.id)));
                         return (
                           <div key={shift} className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
                             <span className="flex w-24 shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -211,38 +257,36 @@ export default function AvailabilityPage() {
                               {/* Any restaurant / no preference */}
                               <button
                                 type="button"
-                                disabled={!editable || pending === anyKey || (specificOn && !anyOn)}
-                                onClick={() => void toggle(date, shift, null)}
+                                disabled={!editable || (specificOn && !anyOn)}
+                                onClick={() => toggle(date, shift, null)}
                                 title={t("skala.availability.anyHint")}
                                 className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors
                                   ${anyOn
                                     ? "border-primary bg-primary text-primary-foreground"
                                     : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"}
-                                  ${(!editable || pending === anyKey || (specificOn && !anyOn)) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                                  ${(!editable || (specificOn && !anyOn)) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                               >
-                                {pending === anyKey ? <Loader2 className="h-3 w-3 animate-spin" /> : <Star className="h-3 w-3" />}
+                                <Star className="h-3 w-3" />
                                 {t("skala.availability.anyRestaurant")}
                               </button>
                               {/* Specific restaurants (his clients) with vacancy counts */}
                               {clients.map((r) => {
                                 const key = slotKey(date, shift, r.id);
-                                const on = subMap.has(key);
-                                const busy = pending === key;
+                                const on = draft.has(key);
                                 const vac = vacancies.get(vacKey(date, shift, r.id)) ?? 0;
-                                const disabled = !editable || busy || (anyOn && !on);
+                                const disabled = !editable || (anyOn && !on);
                                 return (
                                   <button
                                     key={r.id}
                                     type="button"
                                     disabled={disabled}
-                                    onClick={() => void toggle(date, shift, r.id)}
+                                    onClick={() => toggle(date, shift, r.id)}
                                     className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors
                                       ${on
                                         ? "border-primary bg-primary text-primary-foreground"
                                         : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground"}
                                       ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
                                   >
-                                    {busy && <Loader2 className="h-3 w-3 animate-spin" />}
                                     <span>{r.name}</span>
                                     {vac > 0 && (
                                       <span className={`rounded-full px-1.5 text-[10px] leading-4 ${on ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground"}`}>
@@ -261,6 +305,26 @@ export default function AvailabilityPage() {
                 </Card>
               );
             })}
+          </div>
+        )}
+
+        {/* Sticky action bar: select all / clear / submit (§ batch submit). */}
+        {editable && clients.length > 0 && (
+          <div className="sticky bottom-4 z-10">
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card/95 px-4 py-3 shadow-lg shadow-black/5 backdrop-blur">
+              <Button variant="outline" size="sm" className="rounded-xl" onClick={selectAll} disabled={submitting}>
+                <CheckCheck className="mr-1.5 h-4 w-4" />{t("skala.availability.selectAll")}
+              </Button>
+              <Button variant="ghost" size="sm" className="rounded-xl" onClick={clearAll} disabled={submitting || draft.size === 0}>
+                <Eraser className="mr-1.5 h-4 w-4" />{t("skala.availability.clearAll")}
+              </Button>
+              <div className="flex-1" />
+              {dirty && <span className="text-xs font-medium text-amber-600 dark:text-amber-500">{t("skala.availability.unsaved")}</span>}
+              <Button size="sm" className="rounded-xl shadow-sm shadow-primary/20" onClick={() => void submit()} disabled={submitting || !dirty}>
+                {submitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+                {submitting ? t("skala.availability.submitting") : t("skala.availability.submit")}
+              </Button>
+            </div>
           </div>
         )}
       </div>

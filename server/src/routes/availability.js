@@ -8,12 +8,14 @@ import { runCycleMaintenance, notifyCycleDeficits } from "../scheduler.js";
 const router = Router();
 router.use(requireAuth);
 const requireOps = requireRole("coordinator", "administrator");
+// Who may build the schedule (and therefore see the candidate pool for a slot).
+const requireSchedulers = requireRole("coordinator", "administrator", "restaurant_manager");
 
-const CYCLE_COLS = `id, reference_month as "referenceMonth",
+const CYCLE_COLS = `id, reference_month::text as "referenceMonth",
   opens_at as "opensAt", closes_at as "closesAt", status, reopened,
   published_at as "publishedAt", created_at as "createdAt", updated_at as "updatedAt"`;
 
-const SUB_COLS = `id, cycle_id as "cycleId", user_id as "userId", date,
+const SUB_COLS = `id, cycle_id as "cycleId", user_id as "userId", date::text as date,
   shift_type as "shiftType", restaurant_id as "restaurantId",
   preference_rank as "preferenceRank", status, cancelled_at as "cancelledAt",
   created_at as "createdAt"`;
@@ -62,6 +64,63 @@ async function syncFlexibleScore(userId, cycleId) {
       await recomputeScore(userId);
     }
   } else if (!has && existing) {
+    await pool.query(`update public.score_events set is_voided = true where id = $1`, [existing.id]);
+    await recomputeScore(userId);
+  }
+}
+
+// Monthly weekend-availability target (§8 "10 turnos"): a freelancer earns the
+// target bonus by MARKING availability for at least `monthly_target_shifts` (default
+// 10) of the FOUR mandatory weekend turnos — Fri dinner, Sat lunch, Sat dinner, Sun
+// lunch — in the cycle, even if never scheduled. Counted per DISTINCT (date, turno),
+// so marking the same slot for several restaurants (or "any restaurant") does NOT
+// inflate the count. Fri lunch and Sun dinner never count. Idempotent, once per
+// cycle, auto-voided if they later drop below the threshold — mirrors the flexible
+// reward. Uses the existing 'target_10_shifts' event, tagged engagement/cycle so it
+// never collides with a coordinator's manual adjustment.
+async function syncWeekendTargetScore(userId, cycleId) {
+  const cyc = await one(
+    `select reference_month::text as "monthRef" from public.availability_cycles where id = $1`,
+    [cycleId],
+  );
+  if (!cyc) return;
+  const cfg = await one(
+    `select monthly_target_shifts as threshold, weekend_target_points as points
+       from public.app_settings where id = 1`,
+  );
+  const threshold = Number(cfg?.threshold ?? 10);
+  const points = Number(cfg?.points ?? 5);
+  const cnt = await one(
+    `select count(distinct (date::text || '|' || shift_type)) as n
+       from public.availability_submissions
+      where cycle_id = $1 and user_id = $2 and status = 'submitted'
+        and date >= $3::date and date < ($3::date + interval '1 month')  -- only this month's turnos
+        and (
+          (extract(dow from date) = 5 and shift_type = 'dinner') or   -- Friday dinner
+          (extract(dow from date) = 6 and shift_type in ('lunch','dinner')) or -- Saturday
+          (extract(dow from date) = 0 and shift_type = 'lunch')       -- Sunday lunch
+        )`,
+    [cycleId, userId, cyc.monthRef],
+  );
+  const qualifies = Number(cnt?.n ?? 0) >= threshold;
+  const existing = await one(
+    `select id from public.score_events
+      where user_id = $1 and event_type = 'target_10_shifts'
+        and reference_type = 'engagement' and reference_id = $2 and is_voided = false limit 1`,
+    [userId, cycleId],
+  );
+  if (qualifies && !existing) {
+    if (points !== 0) {
+      await pool.query(
+        `insert into public.score_events
+           (user_id, event_type, points, reference_type, reference_id, occurred_on, month_ref, notes)
+         values ($1, 'target_10_shifts', $2, 'engagement', $3, $4, $4, $5)`,
+        [userId, points, cycleId, cyc.monthRef,
+         `Disponibilidade de ${threshold}+ turnos de fim de semana no mês`],
+      );
+      await recomputeScore(userId);
+    }
+  } else if (!qualifies && existing) {
     await pool.query(`update public.score_events set is_voided = true where id = $1`, [existing.id]);
     await recomputeScore(userId);
   }
@@ -179,8 +238,11 @@ router.get("/submissions", async (req, res) => {
   const conds = [];
   const vals = [];
   let i = 1;
+  // A freelancer/visitor may only read their OWN availability — never anyone else's.
+  const selfOnly = req.user.role === "freelancer" || req.user.role === "visitor";
+  if (selfOnly) { conds.push(`user_id = $${i++}`); vals.push(req.user.sub); }
   if (cycleId) { conds.push(`cycle_id = $${i++}`); vals.push(cycleId); }
-  if (userId) { conds.push(`user_id = $${i++}`); vals.push(userId); }
+  if (userId && !selfOnly) { conds.push(`user_id = $${i++}`); vals.push(userId); }
   const where = conds.length ? `where ${conds.join(" and ")}` : "";
   const { rows } = await pool.query(
     `select ${SUB_COLS} from public.availability_submissions ${where} order by date asc, shift_type asc`,
@@ -195,7 +257,7 @@ router.get("/submissions", async (req, res) => {
 // where they registered — so the pool is NOT filtered by restaurant. Freelancers
 // registered to this restaurant (linked as a client OR who chose it for this slot)
 // are flagged `registeredHere` and sorted to the top. One row per freelancer.
-router.get("/submissions/slot", async (req, res) => {
+router.get("/submissions/slot", requireSchedulers, async (req, res) => {
   const { cycleId, date, shiftType, restaurantId } = req.query;
   if (!cycleId || !date || !shiftType) {
     return res.status(400).json({ error: "cycleId, date and shiftType are required" });
@@ -308,9 +370,134 @@ router.post("/submissions", async (req, res) => {
         [b.cycleId, targetUser, b.date, b.shiftType, b.preferenceRank ?? null],
       );
 
-  // Keep the flexibility reward in sync (§ reward no-preference freelancers).
+  // Keep the availability-based rewards in sync: flexibility (§ no-preference) and
+  // the monthly weekend-turno target (§8 "10 turnos").
   await syncFlexibleScore(targetUser, b.cycleId);
+  await syncWeekendTargetScore(targetUser, b.cycleId);
   res.status(201).json(row);
+});
+
+// PUT /api/availability/submissions/bulk — reconcile a freelancer's WHOLE
+// availability for a cycle in one atomic shot (§ "Enviar minha disponibilidade").
+// Body: { cycleId, userId?, slots: [{ date, shiftType, restaurantId|null }] }.
+// Every slot in `slots` becomes submitted; any currently-submitted slot NOT in the
+// list is cancelled. Same gates as the single submit (window open, client links).
+router.put("/submissions/bulk", async (req, res) => {
+  const b = req.body || {};
+  const targetUser = b.userId || req.user.sub;
+  const isSelf = targetUser === req.user.sub;
+  const isOps = req.user.role === "coordinator" || req.user.role === "administrator";
+  if (!isSelf && !isOps) return res.status(403).json({ error: "Forbidden" });
+  if (!b.cycleId || !Array.isArray(b.slots)) {
+    return res.status(400).json({ error: "cycleId and slots[] are required" });
+  }
+
+  const keyOf = (s) => `${String(s.date).slice(0, 10)}|${s.shiftType}|${s.restaurantId ?? "ANY"}`;
+  // Normalise + de-dupe the desired set.
+  const desired = new Map();
+  for (const s of b.slots) {
+    if (!s || !s.date || !["lunch", "dinner"].includes(s.shiftType)) continue;
+    desired.set(keyOf(s), {
+      date: String(s.date).slice(0, 10), shiftType: s.shiftType, restaurantId: s.restaurantId ?? null,
+    });
+  }
+
+  const cyc = await one(`select status from public.availability_cycles where id = $1`, [b.cycleId]);
+  if (!cyc) return res.status(404).json({ error: "Cycle not found" });
+
+  if (!isOps) {
+    // Window must be open (freelancers submit during the open window).
+    if (cyc.status !== "open") {
+      const reopen = await one(
+        `select 1 from public.availability_reopens where cycle_id = $1 and user_id = $2 limit 1`,
+        [b.cycleId, targetUser],
+      );
+      if (!reopen) {
+        return res.status(403).json({
+          error: "cycle_closed",
+          message: "O período de disponibilidade está encerrado. Fale com a coordenadora para reabrir.",
+        });
+      }
+    }
+    // Client-link gate: "any" needs ≥1 link; a specific restaurant needs its link.
+    const { rows: links } = await pool.query(
+      `select restaurant_id from public.member_clients where member_user_id = $1`, [targetUser],
+    );
+    const linked = new Set(links.map((r) => r.restaurant_id));
+    if (desired.size > 0 && linked.size === 0) {
+      return res.status(403).json({
+        error: "not_linked_client",
+        message: "Você ainda não está vinculado a nenhum cliente. Fale com a coordenadora.",
+      });
+    }
+    for (const s of desired.values()) {
+      if (s.restaurantId && !linked.has(s.restaurantId)) {
+        return res.status(403).json({
+          error: "not_linked_client",
+          message: "Você não está vinculado a um dos clientes selecionados.",
+        });
+      }
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const { rows: cur } = await client.query(
+      `select id, date::text as date, shift_type as "shiftType", restaurant_id as "restaurantId"
+         from public.availability_submissions
+        where cycle_id = $1 and user_id = $2 and status = 'submitted'`,
+      [b.cycleId, targetUser],
+    );
+    const curByKey = new Map(cur.map((r) => [keyOf(r), r]));
+
+    // Cancel submitted slots no longer desired.
+    for (const [k, row] of curByKey) {
+      if (!desired.has(k)) {
+        await client.query(
+          `update public.availability_submissions set status='cancelled', cancelled_at=now() where id=$1`,
+          [row.id],
+        );
+      }
+    }
+    // Submit (or re-activate) desired slots not already submitted.
+    for (const [k, s] of desired) {
+      if (curByKey.has(k)) continue;
+      if (s.restaurantId) {
+        await client.query(
+          `insert into public.availability_submissions (cycle_id,user_id,date,shift_type,restaurant_id,status)
+           values ($1,$2,$3,$4,$5,'submitted')
+           on conflict (cycle_id,user_id,date,shift_type,restaurant_id)
+             do update set status='submitted', cancelled_at=null`,
+          [b.cycleId, targetUser, s.date, s.shiftType, s.restaurantId],
+        );
+      } else {
+        await client.query(
+          `insert into public.availability_submissions (cycle_id,user_id,date,shift_type,restaurant_id,status)
+           values ($1,$2,$3,$4,null,'submitted')
+           on conflict (cycle_id,user_id,date,shift_type) where restaurant_id is null
+             do update set status='submitted', cancelled_at=null`,
+          [b.cycleId, targetUser, s.date, s.shiftType],
+        );
+      }
+    }
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    client.release();
+    console.error("bulk availability error:", e.message);
+    return res.status(500).json({ error: "Falha ao enviar disponibilidade." });
+  }
+  client.release();
+
+  await syncFlexibleScore(targetUser, b.cycleId);
+  await syncWeekendTargetScore(targetUser, b.cycleId);
+  const { rows } = await pool.query(
+    `select ${SUB_COLS} from public.availability_submissions
+      where cycle_id = $1 and user_id = $2 and status = 'submitted' order by date asc, shift_type asc`,
+    [b.cycleId, targetUser],
+  );
+  res.json(rows);
 });
 
 // DELETE /api/availability/submissions/:id — cancel a submission; coordinator is
@@ -334,8 +521,10 @@ router.delete("/submissions/:id", async (req, res) => {
     `update public.availability_submissions set status = 'cancelled', cancelled_at = now() where id = $1`,
     [req.params.id],
   );
-  // A cancelled "any" row may end the flexibility reward for this cycle.
+  // A cancelled row may end the flexibility reward and/or drop them below the
+  // monthly weekend-turno target for this cycle.
   await syncFlexibleScore(sub.userId, sub.cycleId);
+  await syncWeekendTargetScore(sub.userId, sub.cycleId);
 
   for (const cid of await coordinatorIds()) {
     await notify({

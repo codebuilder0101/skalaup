@@ -65,7 +65,7 @@ router.get("/", async (req, res) => {
       const me = req.user.sub;
       const { rows: toGive } = await pool.query(
         `select fr.id, fr.restaurant_id as "restaurantId", fr.freelancer_user_id as "freelancerUserId",
-                fr.assignment_id as "assignmentId", fr.month_ref as "monthRef",
+                fr.assignment_id as "assignmentId", fr.month_ref::text as "monthRef",
                 r.name as "restaurantName", fl.name as "freelancerName",
                 a.date::text as date, a.shift_type as "shiftType"
            from public.feedback_requests fr

@@ -16,6 +16,7 @@ import calendarRoutes from "./routes/calendar.js";
 import swapRoutes from "./routes/swaps.js";
 import feedbackRoutes from "./routes/feedback.js";
 import payrollRoutes from "./routes/payroll.js";
+import vacancyRoutes from "./routes/vacancies.js";
 import { startScheduler } from "./scheduler.js";
 
 dotenv.config();
@@ -47,6 +48,7 @@ app.use("/api/calendar", calendarRoutes);
 app.use("/api/swaps", swapRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/payroll", payrollRoutes);
+app.use("/api/vacancies", vacancyRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

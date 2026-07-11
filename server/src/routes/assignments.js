@@ -6,7 +6,7 @@ import {
   weekdayOf, isWeekendMandatory, resolveShiftTimes, precedingWeekendShifts,
 } from "../scheduleRules.js";
 import { canEditRestaurant } from "../access.js";
-import { notifyWaitlistForSlot } from "../demand.js";
+import { openVagaForSlot, openVagasForCycle } from "../demand.js";
 
 // Schedule assignments — the escala (§3.3). Coordinators/administrators manage any
 // restaurant; restaurant_managers may fill/publish their OWN restaurant's shifts.
@@ -17,7 +17,7 @@ router.use(requireAuth);
 const requireSchedulers = requireRole("coordinator", "administrator", "restaurant_manager");
 
 const COLS = `id, cycle_id as "cycleId", restaurant_id as "restaurantId",
-  user_id as "userId", date, shift_type as "shiftType",
+  user_id as "userId", date::text as date, shift_type as "shiftType",
   start_time as "startTime", end_time as "endTime", status,
   is_weekend_mandatory as "isWeekendMandatory", pay_rate_applied as "payRateApplied",
   bonus_applied as "bonusApplied", assigned_via as "assignedVia",
@@ -30,9 +30,14 @@ router.get("/", async (req, res) => {
   const conds = [];
   const vals = [];
   let i = 1;
+  // Freelancers/visitors may only ever see their OWN schedule — enforced here, not
+  // trusted from the client's userId param, so a freelancer can never read the whole
+  // board. Schedulers (coordinator/administrator/manager) keep full visibility.
+  const selfOnly = req.user.role === "freelancer" || req.user.role === "visitor";
+  if (selfOnly) { conds.push(`user_id = $${i++}`); vals.push(req.user.sub); }
   if (date) { conds.push(`date = $${i++}`); vals.push(date); }
   if (restaurantId) { conds.push(`restaurant_id = $${i++}`); vals.push(restaurantId); }
-  if (userId) { conds.push(`user_id = $${i++}`); vals.push(userId); }
+  if (userId && !selfOnly) { conds.push(`user_id = $${i++}`); vals.push(userId); }
   if (cycleId) { conds.push(`cycle_id = $${i++}`); vals.push(cycleId); }
   if (status) { conds.push(`status = $${i++}`); vals.push(status); }
   const where = conds.length ? `where ${conds.join(" and ")}` : "";
@@ -169,7 +174,7 @@ router.put("/:id/cancel", requireSchedulers, async (req, res) => {
     );
     // Cancelling a PUBLISHED shift opens a vacancy → alert the waiting list (§3.4).
     if (target.status === "published") {
-      notifyWaitlistForSlot({
+      openVagaForSlot({
         cycleId: target.cycleId, restaurantId: target.restaurantId,
         date: target.date, shiftType: target.shiftType,
       }).catch((e) => console.error("waitlist notify failed:", e.message));
@@ -234,6 +239,10 @@ router.post("/publish", requireSchedulers, async (req, res) => {
       data: { cycleId },
     });
   }
+
+  // Publishing with gaps is allowed (§ trainees / not enough people yet). Any slot
+  // still short of demand opens a vaga the waiting list can self-assume. Best-effort.
+  openVagasForCycle(cycleId).catch((e) => console.error("open vagas on publish failed:", e.message));
 
   res.json({ ok: true, publishedCount: published.length, notifiedUsers: affected.length });
 });

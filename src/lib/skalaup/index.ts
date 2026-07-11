@@ -12,3 +12,4 @@ export * as attendanceApi from "./attendance";
 export * as calendarApi from "./calendar";
 export * as swapsApi from "./swaps";
 export * as feedbackApi from "./feedback";
+export * as vacanciesApi from "./vacancies";

@@ -43,7 +43,7 @@ const COORDINATOR_PATHS = [
 const ADMINISTRATOR_PATHS = [...COORDINATOR_PATHS, "/approvals"];
 const MANAGER_PATHS = ["/dashboard", "/scheduling", "/today", "/feedback", "/notifications", "/settings", "/profile"];
 const FREELANCER_PATHS = [
-  "/my-schedule", "/availability", "/checkin", "/swaps", "/performance", "/notifications", "/settings", "/profile",
+  "/my-schedule", "/availability", "/vagas", "/checkin", "/swaps", "/performance", "/notifications", "/settings", "/profile",
 ];
 const VISITOR_PATHS = ["/availability", "/notifications", "/settings", "/profile"];
 

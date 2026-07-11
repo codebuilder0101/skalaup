@@ -3,7 +3,7 @@ import { pool, one } from "../db.js";
 import { requireAuth, requireRole } from "../auth.js";
 import { weekdayOf, isWeekendMandatory, resolveShiftTimes } from "../scheduleRules.js";
 import { isOps, managerRestaurantIds } from "../access.js";
-import { notifyWaitlistForSlot } from "../demand.js";
+import { openVagaForSlot } from "../demand.js";
 
 // Demand configuration (§3.5) + the aggregated builder board read by the Schedule
 // Builder screen. Reads are open to coordinator/administrator AND restaurant_manager;
@@ -75,7 +75,7 @@ router.get("/overrides", async (req, res) => {
   if (date) { conds.push(`date = $${i++}`); vals.push(date); }
   const where = conds.length ? `where ${conds.join(" and ")}` : "";
   const { rows } = await pool.query(
-    `select id, restaurant_id as "restaurantId", date, shift_type as "shiftType",
+    `select id, restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType",
             required_count as "requiredCount", reason
        from public.demand_overrides ${where} order by date asc`,
     vals,
@@ -100,7 +100,7 @@ router.put("/overrides", requireOps, async (req, res) => {
      values ($1,$2,$3,$4,$5,$6)
      on conflict (restaurant_id, date, shift_type)
        do update set required_count = excluded.required_count, reason = excluded.reason
-     returning id, restaurant_id as "restaurantId", date, shift_type as "shiftType",
+     returning id, restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType",
                required_count as "requiredCount", reason`,
     [b.restaurantId, b.date, b.shiftType, b.requiredCount, b.reason ?? null, req.user.sub],
   );
@@ -114,7 +114,7 @@ router.put("/overrides", requireOps, async (req, res) => {
       [b.date],
     );
     if (cyc && cyc.status === "published") {
-      notifyWaitlistForSlot({
+      openVagaForSlot({
         cycleId: cyc.id, restaurantId: b.restaurantId, date: b.date, shiftType: b.shiftType,
       }).catch((e) => console.error("waitlist notify failed:", e.message));
     }

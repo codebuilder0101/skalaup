@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   Gauge,
+  Zap,
 } from "lucide-react";
 import type { UserRole } from "@/lib/auth";
 
@@ -68,6 +69,7 @@ const navGroupsConfig: NavGroup[] = [
     items: [
       { icon: CalendarDays, labelKey: "nav.mySchedule", path: "/my-schedule", roles: FREELANCER },
       { icon: CalendarDays, labelKey: "nav.availability", path: "/availability", roles: FREELANCER },
+      { icon: Zap, labelKey: "nav.vagas", path: "/vagas", roles: FREELANCER },
     ],
   },
   {

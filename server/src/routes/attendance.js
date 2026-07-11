@@ -251,6 +251,49 @@ router.post("/checkin", async (req, res) => {
   }
 });
 
+// Award the furo/vaga cover reward once the turno is actually WORKED (§ "só ganha os
+// pontos depois que trabalha"). Only for shifts the freelancer self-assumed from the
+// waiting list, and only if they hit the monthly 10-turno availability target for that
+// cycle (§ gate). Idempotent — one furo_covered per covered assignment.
+async function awardFuroCoverIfEarned(assignmentId) {
+  const a = await one(
+    `select a.user_id as "userId", a.cycle_id as "cycleId", a.assigned_via as "assignedVia",
+            a.date::text as date
+       from public.schedule_assignments a where a.id = $1`,
+    [assignmentId],
+  );
+  if (!a || a.assignedVia !== "waiting_list" || !a.cycleId) return;
+  const met = await one(
+    `select 1 from public.score_events
+      where user_id = $1 and event_type = 'target_10_shifts' and reference_type = 'engagement'
+        and reference_id = $2 and is_voided = false limit 1`,
+    [a.userId, a.cycleId],
+  );
+  if (!met) return; // did not meet the 10-turno availability target this month
+  const existing = await one(
+    `select 1 from public.score_events
+      where user_id = $1 and event_type = 'furo_covered' and reference_type = 'assignment'
+        and reference_id = $2 and is_voided = false limit 1`,
+    [a.userId, assignmentId],
+  );
+  if (existing) return;
+  const cfg = await one(`select furo_cover_points as p from public.app_settings where id = 1`);
+  const points = Number(cfg?.p ?? 3);
+  if (points === 0) return;
+  await pool.query(
+    `insert into public.score_events
+       (user_id, event_type, points, reference_type, reference_id, occurred_on, month_ref, notes)
+     values ($1,'furo_covered',$2,'assignment',$3,$4,$5,$6)`,
+    [a.userId, points, assignmentId, a.date, monthRefOf(a.date), "Cobriu uma vaga/furo assumida pelo app"],
+  );
+  await pool.query(
+    `update public.freelancer_profiles set current_score = coalesce(
+       (select sum(points) from public.score_events where user_id = $1 and is_voided = false), 0)
+     where user_id = $1`,
+    [a.userId],
+  );
+}
+
 // POST /api/attendance/checkout { assignmentId }
 router.post("/checkout", async (req, res) => {
   try {
@@ -273,6 +316,8 @@ router.post("/checkout", async (req, res) => {
       `update public.shift_attendance set checkout_at = now() where assignment_id = $1`,
       [assignmentId],
     );
+    // Worked a self-assumed vaga/furo → grant the cover reward (gated). Best-effort.
+    await awardFuroCoverIfEarned(assignmentId).catch((e) => console.error("furo reward failed:", e.message));
     res.json(await rowByAssignment(assignmentId));
   } catch (e) {
     console.error("Check-out error:", e.message);

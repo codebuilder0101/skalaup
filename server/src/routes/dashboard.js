@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool, one } from "../db.js";
 import { requireAuth } from "../auth.js";
+import { isOps, managerRestaurantIds } from "../access.js";
 
 // Role-aware dashboard aggregates.
 //  - coordinator/administrator: whole-operation overview (restaurants, freelancer
@@ -183,6 +184,64 @@ async function managerDashboard(uid) {
     feedback: feedback.pending,
   };
 }
+
+// GET /api/dashboard/schedule-performance?month=YYYY-MM&restaurantId=
+// Operational KPIs over the shifts that were SUPPOSED to happen in the month
+// (published, date <= today): % fulfilled (checked in), % no-show (furo),
+// % late. Ops see the whole operation (optionally filtered by client);
+// managers see only their restaurant(s).
+router.get("/schedule-performance", async (req, res) => {
+  try {
+    const monthOk = /^\d{4}-\d{2}$/.test(String(req.query.month || ""));
+    const monthStart = monthOk ? `${req.query.month}-01` : null;
+
+    const vals = [];
+    let where = "a.status = 'published' and a.date <= current_date";
+    if (monthStart) {
+      vals.push(monthStart);
+      where += ` and date_trunc('month', a.date) = date_trunc('month', $${vals.length}::date)`;
+    } else {
+      where += " and date_trunc('month', a.date) = date_trunc('month', current_date)";
+    }
+
+    // Restaurant scoping: managers are restricted to their own restaurant(s).
+    if (req.user.role === "restaurant_manager") {
+      const ids = await managerRestaurantIds(req.user.sub);
+      if (ids.length === 0) return res.json({ total: 0, fulfilled: 0, noShow: 0, late: 0, fulfilledPct: 0, noShowPct: 0, latePct: 0 });
+      vals.push(ids);
+      where += ` and a.restaurant_id = any($${vals.length})`;
+    } else if (!isOps(req.user.role)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    // Optional client filter (ops or a manager narrowing within their own).
+    if (req.query.restaurantId) {
+      vals.push(req.query.restaurantId);
+      where += ` and a.restaurant_id = $${vals.length}`;
+    }
+
+    const row = await one(
+      `select count(*)::int as total,
+              count(*) filter (where att.no_show)::int as "noShow",
+              count(*) filter (where att.checkin_at is not null and not coalesce(att.no_show, false))::int as fulfilled,
+              count(*) filter (where att.checkin_at is not null and not coalesce(att.no_show, false)
+                                and coalesce(att.lateness_category, 'none') <> 'none')::int as late
+         from public.schedule_assignments a
+         left join public.shift_attendance att on att.assignment_id = a.id
+        where ${where}`,
+      vals,
+    );
+    const total = row.total || 0;
+    const pct = (n) => (total ? Math.round((n / total) * 1000) / 10 : 0);
+    res.json({
+      total,
+      fulfilled: row.fulfilled, noShow: row.noShow, late: row.late,
+      fulfilledPct: pct(row.fulfilled), noShowPct: pct(row.noShow), latePct: pct(row.late),
+    });
+  } catch (e) {
+    console.error("schedule-performance error:", e.message);
+    res.status(500).json({ error: "Falha ao carregar o desempenho da escala." });
+  }
+});
 
 // GET /api/dashboard — shape depends on the requesting user's role.
 router.get("/", async (req, res) => {

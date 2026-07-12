@@ -70,3 +70,27 @@ async function wrap<T>(p: Promise<T>, fallback: T): Promise<Result<T>> {
 export async function getDashboard(): Promise<Result<DashboardData | null>> {
   return wrap(api.get<DashboardData>("/dashboard"), null);
 }
+
+export interface SchedulePerformance {
+  total: number;
+  fulfilled: number;
+  noShow: number;
+  late: number;
+  fulfilledPct: number;
+  noShowPct: number;
+  latePct: number;
+}
+
+const EMPTY_PERF: SchedulePerformance = {
+  total: 0, fulfilled: 0, noShow: 0, late: 0, fulfilledPct: 0, noShowPct: 0, latePct: 0,
+};
+
+export async function getSchedulePerformance(
+  params?: { month?: string; restaurantId?: string },
+): Promise<Result<SchedulePerformance>> {
+  const q = new URLSearchParams();
+  if (params?.month) q.set("month", params.month);
+  if (params?.restaurantId) q.set("restaurantId", params.restaurantId);
+  const qs = q.toString();
+  return wrap(api.get<SchedulePerformance>(`/dashboard/schedule-performance${qs ? `?${qs}` : ""}`), EMPTY_PERF);
+}

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   CalendarCheck, Store, Users, ArrowLeftRight, MessageSquare, DollarSign,
-  UserPlus, ShieldCheck, LogIn, LogOut, Clock,
+  UserPlus, ShieldCheck, LogIn, LogOut, Clock, BarChart3,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis,
@@ -15,10 +15,12 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  getDashboard, isManagerDashboard,
+  getDashboard, isManagerDashboard, getSchedulePerformance,
   type DashboardData, type TodayShift,
-  type ShiftsTrendPoint, type ScoreBucket,
+  type ShiftsTrendPoint, type ScoreBucket, type SchedulePerformance,
 } from "@/lib/skalaup/dashboard";
+import { listRestaurants } from "@/lib/skalaup/restaurants";
+import type { Restaurant } from "@/lib/skalaup/types";
 
 const AXIS = "#94a3b8";
 const C_TOTAL = "#ec4899";
@@ -157,6 +159,70 @@ function TodaySchedule({ shifts, showRestaurant, showAttendance }: {
   );
 }
 
+// Operational KPIs for the coordinator/admin landing — replaces a personal score
+// view that made no sense for ops. Month + client filter (R3/R5).
+function SchedulePerformancePanel() {
+  const { t } = useTranslation();
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [restaurantId, setRestaurantId] = useState<string>("all");
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [perf, setPerf] = useState<SchedulePerformance | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { void listRestaurants().then(({ data }) => setRestaurants(data)); }, []);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    void getSchedulePerformance({ month, restaurantId: restaurantId === "all" ? undefined : restaurantId })
+      .then(({ data }) => { if (alive) { setPerf(data); setLoading(false); } });
+    return () => { alive = false; };
+  }, [month, restaurantId]);
+
+  const Metric = ({ label, pct, count, color }: { label: string; pct: number; count: number; color: string }) => (
+    <div className="flex-1 min-w-[110px]">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">{label}</p>
+      <p className={`text-3xl font-bold mt-1 ${color}`}>{pct}%</p>
+      <p className="text-xs text-muted-foreground mt-0.5">{count} {t("skala.dashboard.perf.of")} {perf?.total ?? 0}</p>
+    </div>
+  );
+
+  return (
+    <Card className="p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 className="font-semibold text-foreground flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-primary" /> {t("skala.dashboard.perf.title")}
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">{t("skala.dashboard.perf.subtitle")}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
+            aria-label={t("skala.dashboard.perf.month")}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
+          <select value={restaurantId} onChange={(e) => setRestaurantId(e.target.value)}
+            aria-label={t("skala.dashboard.perf.client")}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm max-w-[200px]">
+            <option value="all">{t("skala.dashboard.perf.allClients")}</option>
+            {restaurants.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+      </div>
+      {loading ? (
+        <p className="text-sm text-muted-foreground">{t("skala.common.loading")}</p>
+      ) : (perf?.total ?? 0) === 0 ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">{t("skala.dashboard.perf.empty")}</p>
+      ) : (
+        <div className="flex flex-wrap gap-6">
+          <Metric label={t("skala.dashboard.perf.fulfilled")} pct={perf!.fulfilledPct} count={perf!.fulfilled} color="text-emerald-600" />
+          <Metric label={t("skala.dashboard.perf.noShow")} pct={perf!.noShowPct} count={perf!.noShow} color="text-rose-600" />
+          <Metric label={t("skala.dashboard.perf.late")} pct={perf!.latePct} count={perf!.late} color="text-amber-600" />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function Index() {
   const { t } = useTranslation();
   const { user, canAccess } = useAuth();
@@ -272,6 +338,7 @@ export default function Index() {
                 hint={t("skala.dashboard.shiftsThisMonth", { n: data.finance.shifts })}
               />
             </div>
+            <SchedulePerformancePanel />
             <DashboardCharts trend={data.shiftsTrend} buckets={data.scoreBuckets} />
             <TodaySchedule shifts={data.todaySchedule} showRestaurant showAttendance={false} />
           </>

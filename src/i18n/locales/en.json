@@ -1717,6 +1717,18 @@
     "dashboard": {
       "welcome": "Welcome, {{name}}",
       "subtitle": "Overview of your SkalaUp operation",
+      "perf": {
+        "title": "Schedule performance",
+        "subtitle": "Of the shifts that should have happened this month.",
+        "month": "Month",
+        "client": "Client",
+        "allClients": "All clients",
+        "fulfilled": "Fulfilled",
+        "noShow": "No-shows",
+        "late": "Late",
+        "of": "of",
+        "empty": "No shifts in the selected period."
+      },
       "noData": "No data available.",
       "draft": "Draft",
       "todaySchedule": "Today's schedule",

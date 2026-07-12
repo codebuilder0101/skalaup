@@ -1717,6 +1717,18 @@
     "dashboard": {
       "welcome": "Bem-vinda, {{name}}",
       "subtitle": "Visão geral da sua operação SkalaUp",
+      "perf": {
+        "title": "Desempenho da escala",
+        "subtitle": "Dos turnos que deveriam acontecer no mês.",
+        "month": "Mês",
+        "client": "Cliente",
+        "allClients": "Todos os clientes",
+        "fulfilled": "Cumpridos",
+        "noShow": "Furos",
+        "late": "Atrasos",
+        "of": "de",
+        "empty": "Sem turnos no período selecionado."
+      },
       "noData": "Nenhum dado disponível.",
       "draft": "Rascunho",
       "todaySchedule": "Escala de hoje",

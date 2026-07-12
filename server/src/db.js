@@ -3,6 +3,15 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Return PostgreSQL `date` columns (OID 1082) as the raw "YYYY-MM-DD" string
+// instead of a JS Date. node-postgres otherwise parses a `date` into a Date at
+// the server's LOCAL midnight; on a host whose timezone is at/ahead of UTC
+// (e.g. UTC+1/+2), res.json()'s toISOString() then rolls it back to the previous
+// calendar day — so an availability marked for the 9th round-tripped as the 8th.
+// A calendar date has no timezone; keeping it as a plain string is correct and
+// makes every `date` column timezone-independent across all endpoints.
+pg.types.setTypeParser(1082, (v) => v);
+
 // Standalone PostgreSQL connection pool (no Supabase).
 // Configure via DATABASE_URL or the discrete PG* vars in server/.env.
 const connectionString = process.env.DATABASE_URL;

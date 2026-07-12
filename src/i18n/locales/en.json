@@ -1355,6 +1355,48 @@
       "justNow": "just now",
       "bellLabel": "Notifications ({{count}} unread)"
     },
+    "settings": {
+      "score": {
+        "title": "Scoring & stars",
+        "subtitle": "Define your operation's scoring criteria. Each company can set its own.",
+        "starTitle": "Star levels",
+        "starHint": "Minimum score for each level (ascending).",
+        "starLevel": "{{level}} stars",
+        "monthlyTarget": "Monthly shift target (bonus)",
+        "swapCap": "Swap points cap per month",
+        "save": "Save settings",
+        "saved": "Settings saved.",
+        "cutoffOrderError": "Star levels must be ascending.",
+        "groups": {
+          "goals": "Goals & availability",
+          "engagement": "Engagement",
+          "feedback": "Manager feedback",
+          "penalties": "Lateness & no-shows",
+          "swaps": "Shift swaps"
+        },
+        "labels": {
+          "flexible_availability": "Flexible availability (any restaurant)",
+          "target_10_shifts": "Monthly shift target reached",
+          "furo_covered": "Cover a no-show / vaga",
+          "meeting": "Meeting",
+          "online_training": "Online training",
+          "innovation_video": "Innovation video",
+          "charity_event": "Charity event",
+          "inperson_training": "In-person training",
+          "feedback_fundamentos": "Feedback: fundamentals",
+          "feedback_proatividade": "Feedback: proactivity",
+          "feedback_encantamento": "Feedback: delight",
+          "feedback_extraordinario": "Feedback: extraordinary",
+          "late_light": "Slight lateness",
+          "late_moderate": "Moderate lateness",
+          "late_severe": "Severe lateness",
+          "late_critical": "Critical lateness",
+          "no_show_unjustified": "Unjustified no-show",
+          "swap_requested": "Requested a swap",
+          "swap_accepted": "Accepted a swap"
+        }
+      }
+    },
     "common": {
       "loading": "Loading…",
       "active": "Active",

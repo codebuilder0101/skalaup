@@ -1,22 +1,146 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Settings, Globe } from "lucide-react";
+import { Settings, Globe, Star, Loader2, Save } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 import {
-  SUPPORTED_LANGUAGES,
-  setStoredLanguage,
-  type SupportedLanguage,
+  SUPPORTED_LANGUAGES, setStoredLanguage, type SupportedLanguage,
 } from "@/i18n/config";
+import { getScoreSettings, saveScoreSettings, type ScoreSettings } from "@/lib/skalaup/settings";
+
+// Point fields grouped for the editor. Keys must match server event types.
+const POINT_GROUPS: { titleKey: string; keys: string[] }[] = [
+  { titleKey: "goals", keys: ["flexible_availability", "target_10_shifts", "furo_covered"] },
+  { titleKey: "engagement", keys: ["meeting", "online_training", "innovation_video", "charity_event", "inperson_training"] },
+  { titleKey: "feedback", keys: ["feedback_fundamentos", "feedback_proatividade", "feedback_encantamento", "feedback_extraordinario"] },
+  { titleKey: "penalties", keys: ["late_light", "late_moderate", "late_severe", "late_critical", "no_show_unjustified"] },
+  { titleKey: "swaps", keys: ["swap_requested", "swap_accepted"] },
+];
+
+function ScoreConfigCard() {
+  const { t } = useTranslation();
+  const [cfg, setCfg] = useState<ScoreSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void getScoreSettings().then(({ data, error }) => {
+      if (error) toast.error(error.message);
+      setCfg(data);
+      setLoading(false);
+    });
+  }, []);
+
+  const setPoint = (key: string, v: string) =>
+    setCfg((c) => (c ? { ...c, points: { ...c.points, [key]: v === "" || v === "-" ? 0 : Number(v) } } : c));
+  const setCutoff = (i: number, v: string) =>
+    setCfg((c) => {
+      if (!c) return c;
+      const next = [...c.starCutoffs];
+      next[i] = Number(v) || 0;
+      return { ...c, starCutoffs: next };
+    });
+
+  const save = async () => {
+    if (!cfg) return;
+    // Guard: cutoffs must be strictly ascending (server enforces too, but fail fast).
+    for (let i = 1; i < cfg.starCutoffs.length; i++) {
+      if (cfg.starCutoffs[i] <= cfg.starCutoffs[i - 1]) {
+        toast.error(t("skala.settings.score.cutoffOrderError"));
+        return;
+      }
+    }
+    setSaving(true);
+    const { data, error } = await saveScoreSettings(cfg);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    if (data) setCfg(data);
+    toast.success(t("skala.settings.score.saved"));
+  };
+
+  if (loading) {
+    return (
+      <div className="glass-card rounded-lg p-6 flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" /> {t("skala.common.loading")}
+      </div>
+    );
+  }
+  if (!cfg) return null;
+
+  return (
+    <div className="glass-card rounded-lg p-6 space-y-6">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Star className="w-4 h-4" /> {t("skala.settings.score.title")}
+        </h2>
+        <p className="text-xs text-muted-foreground mt-1">{t("skala.settings.score.subtitle")}</p>
+      </div>
+
+      {/* Star level cutoffs */}
+      <div>
+        <Label className="text-sm font-medium">{t("skala.settings.score.starTitle")}</Label>
+        <p className="text-xs text-muted-foreground mb-2">{t("skala.settings.score.starHint")}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {cfg.starCutoffs.map((val, i) => (
+            <div key={i}>
+              <Label className="text-xs text-muted-foreground">{t("skala.settings.score.starLevel", { level: i + 2 })}</Label>
+              <Input type="number" value={val} onChange={(e) => setCutoff(i, e.target.value)} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Point values by group */}
+      {POINT_GROUPS.map((g) => (
+        <div key={g.titleKey}>
+          <Label className="text-sm font-medium">{t(`skala.settings.score.groups.${g.titleKey}`)}</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+            {g.keys.map((k) => (
+              <div key={k} className="flex items-center justify-between gap-3">
+                <span className="text-sm text-foreground">{t(`skala.settings.score.labels.${k}`)}</span>
+                <Input type="number" step="0.5" className="w-24"
+                  value={cfg.points[k] ?? 0} onChange={(e) => setPoint(k, e.target.value)} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Numeric knobs */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-foreground">{t("skala.settings.score.monthlyTarget")}</span>
+          <Input type="number" min={0} className="w-24" value={cfg.monthlyTargetShifts}
+            onChange={(e) => setCfg((c) => (c ? { ...c, monthlyTargetShifts: Number(e.target.value) || 0 } : c))} />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-foreground">{t("skala.settings.score.swapCap")}</span>
+          <Input type="number" min={0} className="w-24" value={cfg.swapScoringCap}
+            onChange={(e) => setCfg((c) => (c ? { ...c, swapScoringCap: Number(e.target.value) || 0 } : c))} />
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <Button onClick={() => void save()} disabled={saving}>
+          {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
+          {t("skala.settings.score.save")}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 const SettingsPage = () => {
   const { t, i18n } = useTranslation();
+  const { user } = useAuth();
+  const isOps = user?.role === "coordinator" || user?.role === "administrator";
 
   const handleLanguageChange = (lang: string) => {
     const code = lang as SupportedLanguage;
@@ -73,6 +197,8 @@ const SettingsPage = () => {
             </div>
           </div>
         </div>
+
+        {isOps && <ScoreConfigCard />}
       </div>
     </AppLayout>
   );

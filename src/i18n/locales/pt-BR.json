@@ -1355,6 +1355,48 @@
       "justNow": "agora",
       "bellLabel": "Notificações ({{count}} não lidas)"
     },
+    "settings": {
+      "score": {
+        "title": "Pontuação e estrelas",
+        "subtitle": "Defina os critérios de pontuação da sua operação. Cada empresa pode ter os seus.",
+        "starTitle": "Níveis de estrela",
+        "starHint": "Pontuação mínima para cada nível (valores crescentes).",
+        "starLevel": "{{level}} estrelas",
+        "monthlyTarget": "Meta de turnos no mês (bônus)",
+        "swapCap": "Limite de pontos de troca por mês",
+        "save": "Salvar configurações",
+        "saved": "Configurações salvas.",
+        "cutoffOrderError": "Os níveis de estrela devem ser crescentes.",
+        "groups": {
+          "goals": "Metas e disponibilidade",
+          "engagement": "Engajamento",
+          "feedback": "Feedback do gestor",
+          "penalties": "Atrasos e faltas",
+          "swaps": "Trocas de turno"
+        },
+        "labels": {
+          "flexible_availability": "Disponibilidade flexível (qualquer restaurante)",
+          "target_10_shifts": "Meta de turnos no mês atingida",
+          "furo_covered": "Cobrir furo / vaga",
+          "meeting": "Reunião",
+          "online_training": "Treinamento online",
+          "innovation_video": "Vídeo de inovação",
+          "charity_event": "Ação social",
+          "inperson_training": "Treinamento presencial",
+          "feedback_fundamentos": "Feedback: fundamentos",
+          "feedback_proatividade": "Feedback: proatividade",
+          "feedback_encantamento": "Feedback: encantamento",
+          "feedback_extraordinario": "Feedback: extraordinário",
+          "late_light": "Atraso leve",
+          "late_moderate": "Atraso moderado",
+          "late_severe": "Atraso grave",
+          "late_critical": "Atraso gravíssimo",
+          "no_show_unjustified": "Furo injustificado",
+          "swap_requested": "Solicitou troca",
+          "swap_accepted": "Aceitou troca"
+        }
+      }
+    },
     "common": {
       "loading": "Carregando…",
       "active": "Ativo",

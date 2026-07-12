@@ -3,6 +3,7 @@ import { pool, one } from "../db.js";
 import { requireAuth, requireRole } from "../auth.js";
 import { notify, coordinatorIds } from "../notify.js";
 import { isOps, managerRestaurantIds } from "../access.js";
+import { getScorePoints } from "../scoreConfig.js";
 import {
   latenessFromMinutes, countsAsLate, LATE_SCORE_EVENT_TYPES,
 } from "../attendanceRules.js";
@@ -49,6 +50,16 @@ async function recomputeScore(userId) {
       where user_id = $1`,
     [userId],
   );
+}
+
+// Override the lateness penalty points with the editable config value (R1/R7).
+// The category/boundaries stay fixed (business rule); only the points are tunable.
+async function withConfiguredPoints(late) {
+  if (late.eventType) {
+    const p = await getScorePoints();
+    if (Number.isFinite(Number(p[late.eventType]))) late.points = Number(p[late.eventType]);
+  }
+  return late;
 }
 
 // Void any existing lateness score events for an assignment, then add the new one
@@ -222,7 +233,7 @@ router.post("/checkin", async (req, res) => {
     }
 
     const minutes = Math.round(Number(a.lateMin));
-    const late = latenessFromMinutes(minutes);
+    const late = await withConfiguredPoints(latenessFromMinutes(minutes));
 
     await pool.query(
       `insert into public.shift_attendance
@@ -375,7 +386,7 @@ router.put("/:assignmentId/edit", requireOps, async (req, res) => {
     const minutes = a.lateMin == null ? null : Math.round(Number(a.lateMin));
     const late = minutes == null
       ? { category: "none", eventType: null, points: 0 }
-      : latenessFromMinutes(minutes);
+      : await withConfiguredPoints(latenessFromMinutes(minutes));
 
     await pool.query(
       `insert into public.shift_attendance
@@ -509,12 +520,13 @@ router.post("/no-show", requireOps, async (req, res) => {
       occurrence = await unjustifiedCountInMonth(a.userId, a.date);
       await pool.query(`update public.absences set occurrence_in_month = $2 where id = $1`, [absenceId, occurrence]);
 
-      // Score penalty −5 (§9.1).
+      // Score penalty for an unjustified no-show (§9.1) — points from config.
+      const noShowPts = (await getScorePoints()).no_show_unjustified;
       await pool.query(
         `insert into public.score_events
            (user_id, event_type, points, reference_type, reference_id, occurred_on, month_ref, created_by)
-         values ($1, 'no_show_unjustified', -5, 'absence', $2, $3, $4, $5)`,
-        [a.userId, absenceId, a.date, monthRef, req.user.sub],
+         values ($1, 'no_show_unjustified', $6, 'absence', $2, $3, $4, $5)`,
+        [a.userId, absenceId, a.date, monthRef, req.user.sub, noShowPts],
       );
 
       // 1st furo → discount of one (highest) shift, once per user per period (§5/§8.4).

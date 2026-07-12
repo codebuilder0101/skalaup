@@ -1,0 +1,110 @@
+import { Router } from "express";
+import { pool, one } from "../db.js";
+import { requireAuth, requireRole } from "../auth.js";
+import { DEFAULT_SCORE_POINTS, DEFAULT_STAR_CUTOFFS, getScorePoints } from "../scoreConfig.js";
+
+// Editable scoring configuration (R1/R7). Coordinators/admins edit point values
+// and star-level cutoffs. Three point values are backed by dedicated app_settings
+// columns the scoring engine already reads (flexible availability, weekend target,
+// furo cover); the rest live in app_settings.score_points (jsonb). This route
+// presents one unified `points` map and routes each key to the right store on save.
+const router = Router();
+router.use(requireAuth);
+const requireOps = requireRole("coordinator", "administrator");
+
+// eventType -> dedicated app_settings column (source of truth the code reads).
+const COLUMN_POINTS = {
+  flexible_availability: "flexible_availability_points",
+  target_10_shifts: "weekend_target_points",
+  furo_covered: "furo_cover_points",
+};
+
+async function readConfig() {
+  const s = await one(
+    `select flexible_availability_points as fa, weekend_target_points as wt,
+            furo_cover_points as fc, monthly_target_shifts as mts, swap_scoring_cap as cap,
+            star_cutoffs as cutoffs
+       from public.app_settings where id = 1`,
+  );
+  const points = await getScorePoints(); // defaults + jsonb overrides (non-column keys)
+  // The three column-backed values are the real source — reflect them.
+  points.flexible_availability = Number(s?.fa ?? DEFAULT_SCORE_POINTS.flexible_availability);
+  points.target_10_shifts = Number(s?.wt ?? DEFAULT_SCORE_POINTS.target_10_shifts);
+  points.furo_covered = Number(s?.fc ?? DEFAULT_SCORE_POINTS.furo_covered);
+  const cutoffs = Array.isArray(s?.cutoffs) && s.cutoffs.length === 4
+    ? s.cutoffs.map(Number) : [...DEFAULT_STAR_CUTOFFS];
+  return {
+    points,
+    starCutoffs: cutoffs,
+    monthlyTargetShifts: Number(s?.mts ?? 10),
+    swapScoringCap: Number(s?.cap ?? 3),
+  };
+}
+
+// GET /api/settings/score
+router.get("/score", requireOps, async (_req, res) => {
+  try {
+    res.json(await readConfig());
+  } catch (e) {
+    console.error("settings get error:", e.message);
+    res.status(500).json({ error: "Falha ao carregar as configurações." });
+  }
+});
+
+const isNum = (v) => v != null && Number.isFinite(Number(v));
+
+// PUT /api/settings/score { points?, starCutoffs?, monthlyTargetShifts?, swapScoringCap? }
+router.put("/score", requireOps, async (req, res) => {
+  try {
+    const b = req.body || {};
+
+    // Validate star cutoffs: exactly 4, finite, strictly ascending.
+    let cutoffs = null;
+    if (b.starCutoffs !== undefined) {
+      const c = b.starCutoffs;
+      if (!Array.isArray(c) || c.length !== 4 || !c.every(isNum)) {
+        return res.status(400).json({ error: "starCutoffs must be 4 numbers." });
+      }
+      cutoffs = c.map(Number);
+      for (let i = 1; i < 4; i++) {
+        if (cutoffs[i] <= cutoffs[i - 1]) {
+          return res.status(400).json({ error: "starCutoffs must be strictly ascending." });
+        }
+      }
+    }
+
+    // Split incoming point edits into column-backed vs jsonb-backed.
+    const colUpdates = {}; // app_settings column -> value
+    const jsonUpdates = {}; // event_type -> value (for score_points jsonb)
+    if (b.points && typeof b.points === "object") {
+      for (const [k, v] of Object.entries(b.points)) {
+        if (!(k in DEFAULT_SCORE_POINTS) || !isNum(v)) continue;
+        if (COLUMN_POINTS[k]) colUpdates[COLUMN_POINTS[k]] = Number(v);
+        else jsonUpdates[k] = Number(v);
+      }
+    }
+    if (isNum(b.monthlyTargetShifts)) colUpdates.monthly_target_shifts = Math.max(0, Math.round(Number(b.monthlyTargetShifts)));
+    if (isNum(b.swapScoringCap)) colUpdates.swap_scoring_cap = Math.max(0, Math.round(Number(b.swapScoringCap)));
+
+    // Merge jsonb overrides on top of what's stored.
+    const existing = (await one(`select score_points from public.app_settings where id = 1`))?.score_points || {};
+    const mergedJson = { ...existing, ...jsonUpdates };
+
+    // Build one UPDATE.
+    const sets = ["updated_at = now()", "score_points = $1::jsonb"];
+    const vals = [JSON.stringify(mergedJson)];
+    if (cutoffs) { vals.push(JSON.stringify(cutoffs)); sets.push(`star_cutoffs = $${vals.length}::jsonb`); }
+    for (const [col, v] of Object.entries(colUpdates)) { vals.push(v); sets.push(`${col} = $${vals.length}`); }
+    await pool.query(`update public.app_settings set ${sets.join(", ")} where id = 1`, vals);
+
+    // If cutoffs changed, recompute every freelancer's level (fires the trigger).
+    if (cutoffs) await pool.query(`update public.freelancer_profiles set current_score = current_score`);
+
+    res.json(await readConfig());
+  } catch (e) {
+    console.error("settings put error:", e.message);
+    res.status(500).json({ error: "Falha ao salvar as configurações." });
+  }
+});
+
+export default router;

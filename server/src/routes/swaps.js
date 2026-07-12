@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from "../auth.js";
 import { notify, coordinatorIds } from "../notify.js";
 import { weekdayOf, isWeekendMandatory } from "../scheduleRules.js";
 import { monthRefOf } from "../payroll.js";
+import { getScorePoints } from "../scoreConfig.js";
 
 // Shift swaps (§7). State machine:
 //   pending_target → (target accepts) approved   ← auto-approved on acceptance
@@ -71,6 +72,7 @@ async function swapScoringCap() {
 // (−1 requester, +2 accepter capped per month). Returns the points the accepter
 // actually earned (0 once the monthly cap is hit).
 async function applySwapAndScore(s) {
+  const cfgPoints = await getScorePoints();
   await pool.query(
     `update public.schedule_assignments
         set user_id=$2, assigned_via='swap', updated_at=now() where id=$1`,
@@ -78,7 +80,7 @@ async function applySwapAndScore(s) {
   );
   await addScore({
     userId: s.requesterUserId, eventType: "swap_requested",
-    points: SWAP_POINTS.swap_requested, occurredOn: s.date, referenceId: s.id,
+    points: cfgPoints.swap_requested ?? SWAP_POINTS.swap_requested, occurredOn: s.date, referenceId: s.id,
   });
   const cap = await swapScoringCap();
   const accepted = await one(
@@ -86,7 +88,7 @@ async function applySwapAndScore(s) {
       where user_id=$1 and event_type='swap_accepted' and is_voided=false and month_ref=$2`,
     [s.targetUserId, monthRefOf(s.date)],
   );
-  const awardPoints = accepted.n < cap ? SWAP_POINTS.swap_accepted : 0;
+  const awardPoints = accepted.n < cap ? (cfgPoints.swap_accepted ?? SWAP_POINTS.swap_accepted) : 0;
   await addScore({
     userId: s.targetUserId, eventType: "swap_accepted",
     points: awardPoints, occurredOn: s.date, referenceId: s.id,

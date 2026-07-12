@@ -1,20 +1,17 @@
 import { Router } from "express";
 import { pool, one } from "../db.js";
 import { requireAuth, requireRole } from "../auth.js";
+import { getScorePoints, DEFAULT_SCORE_POINTS } from "../scoreConfig.js";
 
-// Score events (§9). Canonical point values mirror the frontend SCORE_POINTS map;
-// the coordinator may override per-event via an explicit `points` value (§9.1 OBS).
+// Score events (§9). Point values come from the editable config (scoreConfig.js);
+// the coordinator may also override per-event via an explicit `points` value.
 const router = Router();
 router.use(requireAuth);
 const requireOps = requireRole("coordinator", "administrator");
 
-const SCORE_POINTS = {
-  target_10_shifts: 5, swap_accepted: 2, meeting: 2, online_training: 2,
-  innovation_video: 2, charity_event: 3, inperson_training: 4,
-  feedback_fundamentos: 1, feedback_proatividade: 2, feedback_encantamento: 3,
-  feedback_extraordinario: 5, late_light: -0.5, late_moderate: -2, late_severe: -4,
-  late_critical: -8, swap_requested: -1, no_show_unjustified: -5, manual_adjustment: 0,
-};
+// Event types a coordinator may create manually (validation only — the VALUES
+// come from the editable config, not this list).
+const MANUAL_EVENT_TYPES = Object.keys(DEFAULT_SCORE_POINTS);
 
 const COLS = `id, user_id as "userId", event_type as "eventType", points,
   reference_type as "referenceType", reference_id as "referenceId",
@@ -68,8 +65,8 @@ router.post("/events", requireOps, async (req, res) => {
   if (!b.userId || !b.eventType || !b.occurredOn) {
     return res.status(400).json({ error: "userId, eventType and occurredOn are required" });
   }
-  if (!(b.eventType in SCORE_POINTS)) return res.status(400).json({ error: "Invalid eventType" });
-  const points = b.points ?? SCORE_POINTS[b.eventType];
+  if (!MANUAL_EVENT_TYPES.includes(b.eventType)) return res.status(400).json({ error: "Invalid eventType" });
+  const points = b.points ?? (await getScorePoints())[b.eventType];
   const row = await one(
     `insert into public.score_events
        (user_id, event_type, points, reference_type, reference_id, occurred_on, month_ref, created_by, notes)

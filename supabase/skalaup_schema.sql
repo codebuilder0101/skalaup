@@ -774,6 +774,32 @@ create table if not exists public.extra_shift_requests (
 );
 create index if not exists idx_extra_req_status on public.extra_shift_requests(status);
 
+-- Editable scoring config (R1/R7): per-event point overrides + star-level cutoffs.
+-- `score_points` overrides the code defaults per event_type; `star_cutoffs` is 4
+-- ascending scores mapping current_score → level 1..5 (level = 1 + #cutoffs met).
+alter table public.app_settings add column if not exists score_points jsonb;
+alter table public.app_settings add column if not exists star_cutoffs jsonb;
+update public.app_settings set star_cutoffs = '[10,25,50,100]'::jsonb where id = 1 and star_cutoffs is null;
+
+-- Derive freelancer_profiles.current_level from current_score on every write, using
+-- the configured cutoffs. This makes stars automatic across all recompute sites.
+create or replace function public.skala_set_current_level() returns trigger as $$
+declare cutoffs jsonb; lvl int := 1; c numeric;
+begin
+  select star_cutoffs into cutoffs from public.app_settings where id = 1;
+  if cutoffs is null then cutoffs := '[10,25,50,100]'::jsonb; end if;
+  for c in select value::numeric from jsonb_array_elements_text(cutoffs) loop
+    if coalesce(new.current_score, 0) >= c then lvl := lvl + 1; end if;
+  end loop;
+  new.current_level := least(5, lvl);
+  return new;
+end $$ language plpgsql;
+
+drop trigger if exists trg_set_current_level on public.freelancer_profiles;
+create trigger trg_set_current_level
+  before insert or update of current_score on public.freelancer_profiles
+  for each row execute function public.skala_set_current_level();
+
 -- Align score_events.event_type with the live set (furo_covered was added post-hoc).
 alter table public.score_events drop constraint if exists score_events_event_type_check;
 alter table public.score_events add constraint score_events_event_type_check check (event_type in (

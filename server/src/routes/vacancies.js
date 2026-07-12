@@ -166,6 +166,19 @@ router.post("/claim", async (req, res) => {
        returning id`,
       [cycleId, restaurantId, uid, date, shiftType, times.startTime, times.endTime, weekendMandatory])).rows[0];
 
+    // If this slot exists only because of an extra-shift override (no base demand),
+    // flag the assignment as extra so working it earns the furo-cover reward (R9).
+    const extra = (await client.query(
+      `select 1 from public.demand_overrides ov
+        where ov.restaurant_id=$1 and ov.date=$2 and ov.shift_type=$3 and ov.is_extra
+          and coalesce((select rd.required_count from public.restaurant_demand rd
+                         where rd.restaurant_id=$1 and rd.weekday=$4 and rd.shift_type=$3), 0) = 0
+        limit 1`,
+      [restaurantId, date, shiftType, weekdayOf(date)])).rows[0];
+    if (extra) {
+      await client.query(`update public.schedule_assignments set is_extra=true where id=$1`, [row.id]);
+    }
+
     // Mark the claimer promoted (create the row if they weren't enrolled), and if the
     // slot is now full, expire the rest of the waiting list for it.
     const score = (await client.query(

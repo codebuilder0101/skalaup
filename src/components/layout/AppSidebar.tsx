@@ -51,6 +51,7 @@ const navGroupsConfig: NavGroup[] = [
     labelKey: "nav.operations",
     items: [
       { icon: ClipboardCheck, labelKey: "nav.today", path: "/today", roles: MANAGER },
+      { icon: Zap, labelKey: "nav.extraShifts", path: "/extra-shifts", roles: [...COORD, ...MANAGER] },
       { icon: MapPin, labelKey: "nav.checkin", path: "/checkin", roles: FREELANCER },
       { icon: ShieldAlert, labelKey: "nav.attendance", path: "/attendance", roles: COORD },
       { icon: ArrowLeftRight, labelKey: "nav.swaps", path: "/swaps", roles: [...COORD, ...FREELANCER] },

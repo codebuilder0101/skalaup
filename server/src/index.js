@@ -18,6 +18,7 @@ import feedbackRoutes from "./routes/feedback.js";
 import payrollRoutes from "./routes/payroll.js";
 import vacancyRoutes from "./routes/vacancies.js";
 import notificationRoutes from "./routes/notifications.js";
+import extraShiftRoutes from "./routes/extraShifts.js";
 import { startScheduler } from "./scheduler.js";
 
 dotenv.config();
@@ -51,6 +52,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/vacancies", vacancyRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/extra-shifts", extraShiftRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

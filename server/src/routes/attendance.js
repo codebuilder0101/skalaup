@@ -272,11 +272,17 @@ async function awardFuroCoverIfEarned(assignmentId) {
     [a.userId, a.cycleId],
   );
   if (!met) return; // did not meet the 10-turno availability target this month
+  await grantFuroCoverOnce(a.userId, assignmentId, a.date, "Cobriu uma vaga/furo assumida pelo app");
+}
+
+// Insert the furo-cover reward once per assignment (idempotent) and recompute the
+// score. Shared by the waiting-list furo path and the extra-shift path.
+async function grantFuroCoverOnce(userId, assignmentId, date, note) {
   const existing = await one(
     `select 1 from public.score_events
       where user_id = $1 and event_type = 'furo_covered' and reference_type = 'assignment'
         and reference_id = $2 and is_voided = false limit 1`,
-    [a.userId, assignmentId],
+    [userId, assignmentId],
   );
   if (existing) return;
   const cfg = await one(`select furo_cover_points as p from public.app_settings where id = 1`);
@@ -286,14 +292,26 @@ async function awardFuroCoverIfEarned(assignmentId) {
     `insert into public.score_events
        (user_id, event_type, points, reference_type, reference_id, occurred_on, month_ref, notes)
      values ($1,'furo_covered',$2,'assignment',$3,$4,$5,$6)`,
-    [a.userId, points, assignmentId, a.date, monthRefOf(a.date), "Cobriu uma vaga/furo assumida pelo app"],
+    [userId, points, assignmentId, date, monthRefOf(date), note],
   );
   await pool.query(
     `update public.freelancer_profiles set current_score = coalesce(
        (select sum(points) from public.score_events where user_id = $1 and is_voided = false), 0)
      where user_id = $1`,
-    [a.userId],
+    [userId],
   );
+}
+
+// Worked an extra shift ("turno extra", R9) → furo-cover reward, ungated (an
+// extra shift is unplanned by definition). Idempotent per assignment.
+async function awardExtraShiftIfWorked(assignmentId) {
+  const a = await one(
+    `select user_id as "userId", date::text as date, is_extra as "isExtra"
+       from public.schedule_assignments where id = $1`,
+    [assignmentId],
+  );
+  if (!a || !a.isExtra) return;
+  await grantFuroCoverOnce(a.userId, assignmentId, a.date, "Trabalhou um turno extra (não previsto na escala)");
 }
 
 // POST /api/attendance/checkout { assignmentId }
@@ -320,6 +338,8 @@ router.post("/checkout", async (req, res) => {
     );
     // Worked a self-assumed vaga/furo → grant the cover reward (gated). Best-effort.
     await awardFuroCoverIfEarned(assignmentId).catch((e) => console.error("furo reward failed:", e.message));
+    // Worked an extra shift → grant the cover reward (ungated). Best-effort.
+    await awardExtraShiftIfWorked(assignmentId).catch((e) => console.error("extra reward failed:", e.message));
     res.json(await rowByAssignment(assignmentId));
   } catch (e) {
     console.error("Check-out error:", e.message);

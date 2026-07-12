@@ -751,6 +751,38 @@ alter table public.freelancer_profiles  add column if not exists pix_key  text;
 alter table public.freelancer_profiles  add column if not exists whatsapp text;
 alter table public.freelancer_profiles  add column if not exists home_cep text;
 
+-- Extra shifts ("turno extra", R9): a shift the restaurant manager requests
+-- beyond the base schedule (e.g. a holiday not in the base grid). Whoever works
+-- an is_extra shift earns the furo-cover reward. Managers request; coordination
+-- either assigns directly or opens it as a vaga (via an is_extra demand override).
+alter table public.schedule_assignments  add column if not exists is_extra boolean not null default false;
+alter table public.demand_overrides      add column if not exists is_extra boolean not null default false;
+create table if not exists public.extra_shift_requests (
+  id            uuid primary key default gen_random_uuid(),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  restaurant_id uuid not null references public.restaurants(id) on delete cascade,
+  date          date not null,
+  shift_type    text not null check (shift_type in ('lunch','dinner')),
+  headcount     integer not null default 1 check (headcount >= 1),
+  reason        text,
+  requested_by  uuid references public.users(id) on delete set null,
+  status        text not null default 'pending'
+                check (status in ('pending','assigned','opened','rejected','cancelled')),
+  decided_by    uuid references public.users(id) on delete set null,
+  decided_at    timestamptz
+);
+create index if not exists idx_extra_req_status on public.extra_shift_requests(status);
+
+-- Align score_events.event_type with the live set (furo_covered was added post-hoc).
+alter table public.score_events drop constraint if exists score_events_event_type_check;
+alter table public.score_events add constraint score_events_event_type_check check (event_type in (
+  'target_10_shifts','swap_accepted','meeting','online_training','innovation_video',
+  'charity_event','inperson_training','feedback_fundamentos','feedback_proatividade',
+  'feedback_encantamento','feedback_extraordinario','late_light','late_moderate',
+  'late_severe','late_critical','swap_requested','no_show_unjustified','manual_adjustment',
+  'flexible_availability','furo_covered'));
+
 -- =============================================================================
 -- ROW LEVEL SECURITY
 -- Permissive policies mirror the existing project (anon + authenticated).

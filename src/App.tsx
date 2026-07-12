@@ -25,6 +25,7 @@ import SwapsPage from "./pages/SwapsPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import FinancialPage from "./pages/FinancialPage";
 import NotificationsPage from "./pages/NotificationsPage";
+import ExtraShiftsPage from "./pages/ExtraShiftsPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import NotFound from "./pages/NotFound";
 
@@ -57,6 +58,7 @@ const App = () => (
 
             {/* Modules with real screens coming next — routed placeholders for now */}
             <Route path="/swaps" element={<ProtectedRoute pathKey="/swaps"><SwapsPage /></ProtectedRoute>} />
+            <Route path="/extra-shifts" element={<ProtectedRoute pathKey="/extra-shifts"><ExtraShiftsPage /></ProtectedRoute>} />
             <Route path="/feedback" element={<ProtectedRoute pathKey="/feedback"><FeedbackPage /></ProtectedRoute>} />
             <Route path="/performance" element={<ProtectedRoute pathKey="/performance"><PerformancePage /></ProtectedRoute>} />
             <Route path="/financial" element={<ProtectedRoute pathKey="/financial"><FinancialPage /></ProtectedRoute>} />

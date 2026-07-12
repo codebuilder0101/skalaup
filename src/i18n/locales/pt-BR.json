@@ -19,7 +19,8 @@
     "portal": "Portal de gestão",
     "notifications": "Notificações",
     "toggleTheme": "Alternar tema",
-    "language": "Idioma"
+    "language": "Idioma",
+    "openMenu": "Abrir menu"
   },
   "nav": {
     "operations": "Operações",

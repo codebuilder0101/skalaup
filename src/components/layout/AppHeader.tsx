@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Bell, Sun, Moon, Globe, LogOut, UserCircle, Settings, Check } from "lucide-react";
+import { Bell, Sun, Moon, Globe, LogOut, UserCircle, Settings, Check, Menu } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SUPPORTED_LANGUAGES } from "@/i18n/config";
 import { getStoredTheme, setTheme, type Theme } from "@/lib/theme";
@@ -23,7 +23,7 @@ function roleLabelFromKey(role: string, t: (key: string) => string) {
   return t("skala.roles.freelancer");
 }
 
-export function AppHeader() {
+export function AppHeader({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const { t, i18n } = useTranslation();
   const { user, logout, canAccess } = useAuth();
   const navigate = useNavigate();
@@ -47,11 +47,22 @@ export function AppHeader() {
   const initials = (user?.name?.trim()?.charAt(0) || "?").toUpperCase();
 
   return (
-    <header className="h-28 flex items-center justify-between gap-4 px-4 sm:px-6 border-b border-border bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/60 z-30">
-      {/* Left: brand — full wordmark logo */}
-      <Link to="/dashboard" className="flex items-center flex-shrink-0">
-        <img src="/logo.png" alt="SkalaUp" className="h-24 w-auto object-contain" />
-      </Link>
+    <header className="h-16 md:h-28 flex items-center justify-between gap-2 sm:gap-4 px-3 sm:px-6 border-b border-border bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/60 z-30">
+      {/* Left: mobile menu + brand */}
+      <div className="flex items-center gap-1 min-w-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden flex-shrink-0"
+          onClick={onMenuClick}
+          aria-label={t("header.openMenu")}
+        >
+          <Menu className="w-5 h-5" />
+        </Button>
+        <Link to="/dashboard" className="flex items-center flex-shrink-0">
+          <img src="/logo.png" alt="SkalaUp" className="h-9 md:h-24 w-auto object-contain" />
+        </Link>
+      </div>
 
       {/* Right: global actions */}
       <TooltipProvider delayDuration={300}>

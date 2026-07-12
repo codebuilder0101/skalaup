@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   LayoutDashboard,
   Settings,
@@ -86,19 +87,15 @@ const navGroupsConfig: NavGroup[] = [
   },
 ];
 
-export function AppSidebar() {
+// Shared nav content — used by both the desktop aside and the mobile drawer.
+// `onNavigate` lets the mobile drawer close itself when a link is tapped.
+function SidebarNav({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const { t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const { user, canAccess, logout } = useAuth();
 
   return (
-    <aside
-      className={`gradient-sidebar flex flex-col border-r border-sidebar-border transition-all duration-300 ${
-        collapsed ? "w-16" : "w-60"
-      }`}
-    >
-      {/* Nav */}
+    <>
       <nav className="flex-1 overflow-y-auto py-4 space-y-6">
         {navGroupsConfig.map((group) => {
           const visibleItems = group.items.filter(
@@ -120,6 +117,7 @@ export function AppSidebar() {
                     <li key={item.path}>
                       <Link
                         to={item.path}
+                        onClick={onNavigate}
                         className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                           isActive
                             ? "bg-sidebar-accent text-sidebar-primary font-medium"
@@ -139,10 +137,9 @@ export function AppSidebar() {
         })}
       </nav>
 
-      {/* Footer actions */}
       <div className="border-t border-sidebar-border p-2">
         <button
-          onClick={logout}
+          onClick={() => { onNavigate?.(); logout(); }}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
           title={collapsed ? t("nav.logout") : undefined}
         >
@@ -150,8 +147,20 @@ export function AppSidebar() {
           {!collapsed && <span>{t("nav.logout")}</span>}
         </button>
       </div>
+    </>
+  );
+}
 
-      {/* Collapse */}
+// Desktop sidebar — fixed, collapsible, hidden below md (mobile uses the drawer).
+export function AppSidebar() {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
+    <aside
+      className={`gradient-sidebar hidden md:flex flex-col border-r border-sidebar-border transition-all duration-300 ${
+        collapsed ? "w-16" : "w-60"
+      }`}
+    >
+      <SidebarNav collapsed={collapsed} />
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="flex items-center justify-center h-12 border-t border-sidebar-border text-sidebar-muted hover:text-sidebar-accent-foreground transition-colors"
@@ -159,6 +168,20 @@ export function AppSidebar() {
         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
     </aside>
+  );
+}
+
+// Mobile drawer — same nav in an off-canvas sheet, opened from the header.
+export function MobileSidebar({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="left" className="gradient-sidebar w-64 p-0 flex flex-col border-sidebar-border">
+        <SheetTitle className="sr-only">SkalaUp</SheetTitle>
+        <div className="flex flex-1 flex-col overflow-hidden pt-6">
+          <SidebarNav collapsed={false} onNavigate={() => onOpenChange(false)} />
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

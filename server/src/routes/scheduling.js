@@ -6,12 +6,12 @@ import { isOps, managerRestaurantIds } from "../access.js";
 import { openVagaForSlot } from "../demand.js";
 
 // Demand configuration (§3.5) + the aggregated builder board read by the Schedule
-// Builder screen. Reads are open to coordinator/administrator AND restaurant_manager;
-// demand writes (below) stay coordinator/administrator only.
+// Builder screen. Restricted to coordinator/administrator: the restaurant_manager
+// role no longer has access to schedule building (Montagem de Escala).
 const router = Router();
 router.use(requireAuth);
 const requireOps = requireRole("coordinator", "administrator");
-router.use(requireRole("coordinator", "administrator", "restaurant_manager"));
+router.use(requireRole("coordinator", "administrator"));
 
 const SHIFTS = ["lunch", "dinner"];
 

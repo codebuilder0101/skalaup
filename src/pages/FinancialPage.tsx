@@ -162,7 +162,8 @@ export default function FinancialPage() {
 
   const exportCsv = () => {
     if (!report) return;
-    const money = (n: number) => (n || 0).toFixed(2);
+    // pt-BR: comma decimal separator so Excel reads the value as a number, not text.
+    const money = (n: number) => (n || 0).toFixed(2).replace(".", ",");
     const header = [
       t("skala.financial.csv.month"), t("skala.financial.csv.freelancer"), t("skala.financial.csv.restaurant"),
       t("skala.financial.csv.shifts"), t("skala.financial.csv.shiftPay"), t("skala.financial.csv.bonus"),
@@ -170,20 +171,22 @@ export default function FinancialPage() {
       t("skala.financial.csv.adjustment"), t("skala.financial.csv.net"),
     ];
     const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
-    const lines = [header.map(esc).join(",")];
+    // pt-BR Excel uses ';' as the list separator; a comma-delimited file collapses into one column.
+    const SEP = ";";
+    const lines = [header.map(esc).join(SEP)];
     for (const fr of report.freelancers) {
       for (const rb of fr.byRestaurant) {
         lines.push([
           month, fr.name, rb.restaurantName, String(rb.shiftCount),
           money(rb.shiftPay), money(rb.weekendBonus), money(rb.lateDiscount),
           money(rb.noShowDiscount), money(rb.manualAdjustment), money(rb.net),
-        ].map(esc).join(","));
+        ].map(esc).join(SEP));
       }
       lines.push([
         month, fr.name, t("skala.financial.csv.total"), String(fr.totals.shiftCount),
         money(fr.totals.shiftPay), money(fr.totals.weekendBonus), money(fr.totals.lateDiscount),
         money(fr.totals.noShowDiscount), money(fr.totals.manualAdjustment), money(fr.totals.net),
-      ].map(esc).join(","));
+      ].map(esc).join(SEP));
     }
     const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

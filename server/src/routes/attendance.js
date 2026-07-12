@@ -189,9 +189,11 @@ router.post("/checkin", async (req, res) => {
     const a = await one(
       `select a.id, a.user_id as "userId", a.restaurant_id as "restaurantId",
               a.date::text as date, a.status,
-              (a.date + a.start_time) as "scheduledStart",
-              extract(epoch from (now() - (a.date + a.start_time))) / 60.0 as "lateMin"
-         from public.schedule_assignments a where a.id = $1`,
+              ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo')) as "scheduledStart",
+              extract(epoch from (now() - ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo')))) / 60.0 as "lateMin"
+         from public.schedule_assignments a
+         left join public.restaurants r on r.id = a.restaurant_id
+        where a.id = $1`,
       [assignmentId],
     );
     if (!a) return res.status(404).json({ error: "Not found" });
@@ -337,10 +339,12 @@ router.put("/:assignmentId/edit", requireOps, async (req, res) => {
 
     const a = await one(
       `select a.user_id as "userId", a.restaurant_id as "restaurantId", a.date::text as date,
-              (a.date + a.start_time) as "scheduledStart",
+              ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo')) as "scheduledStart",
               case when $2::timestamptz is null then null
-                   else extract(epoch from ($2::timestamptz - (a.date + a.start_time))) / 60.0 end as "lateMin"
-         from public.schedule_assignments a where a.id = $1`,
+                   else extract(epoch from ($2::timestamptz - ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo')))) / 60.0 end as "lateMin"
+         from public.schedule_assignments a
+         left join public.restaurants r on r.id = a.restaurant_id
+        where a.id = $1`,
       [assignmentId, checkinAt],
     );
     if (!a) return res.status(404).json({ error: "Not found" });
@@ -410,8 +414,10 @@ router.post("/no-show", requireOps, async (req, res) => {
 
     const a = await one(
       `select a.user_id as "userId", a.restaurant_id as "restaurantId", a.date::text as date,
-              (a.date + a.start_time) as "scheduledStart"
-         from public.schedule_assignments a where a.id = $1`,
+              ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo')) as "scheduledStart"
+         from public.schedule_assignments a
+         left join public.restaurants r on r.id = a.restaurant_id
+        where a.id = $1`,
       [assignmentId],
     );
     if (!a) return res.status(404).json({ error: "Not found" });

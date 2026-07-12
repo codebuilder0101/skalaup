@@ -41,7 +41,7 @@ const COORDINATOR_PATHS = [
 ];
 // Administrator = everything the coordinator can do PLUS user approvals.
 const ADMINISTRATOR_PATHS = [...COORDINATOR_PATHS, "/approvals"];
-const MANAGER_PATHS = ["/dashboard", "/scheduling", "/today", "/feedback", "/notifications", "/settings", "/profile"];
+const MANAGER_PATHS = ["/dashboard", "/today", "/feedback", "/notifications", "/settings", "/profile"];
 const FREELANCER_PATHS = [
   "/my-schedule", "/availability", "/vagas", "/checkin", "/swaps", "/performance", "/notifications", "/settings", "/profile",
 ];

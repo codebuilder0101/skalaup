@@ -40,7 +40,7 @@ const navGroupsConfig: NavGroup[] = [
     labelKey: "nav.coordination",
     items: [
       { icon: LayoutDashboard, labelKey: "nav.dashboard", path: "/dashboard", roles: [...COORD, ...MANAGER] },
-      { icon: CalendarCheck, labelKey: "nav.scheduling", path: "/scheduling", roles: [...COORD, ...MANAGER] },
+      { icon: CalendarCheck, labelKey: "nav.scheduling", path: "/scheduling", roles: COORD },
       { icon: Store, labelKey: "nav.restaurants", path: "/restaurants", roles: COORD },
       { icon: Users, labelKey: "nav.freelancers", path: "/freelancers", roles: COORD },
       { icon: Gauge, labelKey: "nav.demand", path: "/demand", roles: COORD },

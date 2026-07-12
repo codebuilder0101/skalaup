@@ -8,6 +8,30 @@
 
 const digits = (v: string) => v.replace(/\D/g, "");
 
+// ---- Dates — dd/mm/aaaa (Brazilian numeric format) ------------------------
+// Accepts an ISO date ("2026-07-11") or an ISO timestamp. Date-only strings are
+// reformatted purely by string manipulation — no Date parsing — so they are
+// timezone-safe (a calendar date never shifts across the UTC boundary).
+export function formatDateBR(input: string | null | undefined): string {
+  if (!input) return "";
+  const s = String(input);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
+}
+
+// dd/mm/aaaa HH:mm from an ISO timestamp (a true instant, so timezone matters).
+export function formatDateTimeBR(input: string | null | undefined): string {
+  if (!input) return "";
+  const d = new Date(String(input));
+  if (Number.isNaN(d.getTime())) return String(input);
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  }).format(d);
+}
+
 // ---- CPF — 000.000.000-00 (11 digits) -------------------------------------
 export function maskCpf(v: string): string {
   const d = digits(v).slice(0, 11);

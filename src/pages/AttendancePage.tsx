@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { LatenessBadge, NoShowBadge, fmtTime } from "@/components/attendance/StatusBadges";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
+import { formatDateBR } from "@/lib/br-format";
 import {
   listAttendance, listPendingAbsences, markNoShow, undoNoShow, editAttendance, decideAbsence,
 } from "@/lib/skalaup/attendance";
@@ -216,7 +217,7 @@ export default function AttendancePage() {
                   <div className="text-sm">
                     <span className="font-medium text-foreground">{a.freelancerName}</span>
                     <span className="ml-2 text-xs text-muted-foreground">
-                      {a.restaurantName} · {a.date} · {t(`skala.scheduleBuilder.shift.${a.shiftType}`)}
+                      {a.restaurantName} · {formatDateBR(a.date)} · {t(`skala.scheduleBuilder.shift.${a.shiftType}`)}
                     </span>
                     <Badge variant="outline" className="ml-2 rounded-full border-red-300/60 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300">
                       {t("skala.attendance.pending.occurrence", { n: a.occurrenceInMonth ?? 2 })}
@@ -313,7 +314,7 @@ export default function AttendancePage() {
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">{noShowTarget.freelancerName}</span>
-                {" · "}{noShowTarget.restaurantName} · {noShowTarget.date} · {t(`skala.scheduleBuilder.shift.${noShowTarget.shiftType}`)}
+                {" · "}{noShowTarget.restaurantName} · {formatDateBR(noShowTarget.date)} · {t(`skala.scheduleBuilder.shift.${noShowTarget.shiftType}`)}
               </p>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">{t("skala.attendance.type")}</Label>
@@ -358,7 +359,7 @@ export default function AttendancePage() {
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">{editTarget.freelancerName}</span>
-                {" · "}{editTarget.restaurantName} · {editTarget.date} · {t(`skala.scheduleBuilder.shift.${editTarget.shiftType}`)}
+                {" · "}{editTarget.restaurantName} · {formatDateBR(editTarget.date)} · {t(`skala.scheduleBuilder.shift.${editTarget.shiftType}`)}
               </p>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">{t("skala.attendance.checkinTime")}</Label>

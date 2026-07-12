@@ -20,6 +20,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { CycleControl } from "@/components/CycleControl";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
+import { formatDateBR } from "@/lib/br-format";
 import { getCycleByMonth, createCycle, listSlotAvailability } from "@/lib/skalaup/availability";
 import { createAssignment, cancelAssignment, publishCycle } from "@/lib/skalaup/assignments";
 import {
@@ -275,7 +276,7 @@ function ScheduleCell({
               <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px]">{t("skala.scheduleBuilder.bonusShift")}</Badge>
             )}
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">{cell.date}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{formatDateBR(cell.date)}</p>
           {slotList.length > 1 ? (
             <div className="space-y-1 mt-2">
               <Label className="text-[11px]">{t("skala.scheduleBuilder.slot")}</Label>

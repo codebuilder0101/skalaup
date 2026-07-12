@@ -1357,6 +1357,18 @@
       "bellLabel": "Notifications ({{count}} unread)"
     },
     "settings": {
+      "push": {
+        "title": "Mobile notifications",
+        "subtitle": "Get alerts on this device even when the app is closed.",
+        "enable": "Enable notifications",
+        "disable": "Disable notifications",
+        "enabled": "Notifications enabled on this device.",
+        "disabled": "Notifications disabled.",
+        "unsupported": "This device/browser doesn't support push notifications. Tip: install the app to your home screen first.",
+        "deniedHint": "Notifications are blocked. Allow them in your browser settings to enable.",
+        "deniedToast": "Notification permission denied.",
+        "error": "Couldn't enable notifications."
+      },
       "score": {
         "title": "Scoring & stars",
         "subtitle": "Define your operation's scoring criteria. Each company can set its own.",

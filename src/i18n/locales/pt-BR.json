@@ -1357,6 +1357,18 @@
       "bellLabel": "Notificações ({{count}} não lidas)"
     },
     "settings": {
+      "push": {
+        "title": "Notificações no celular",
+        "subtitle": "Receba avisos mesmo com o app fechado, neste dispositivo.",
+        "enable": "Ativar notificações",
+        "disable": "Desativar notificações",
+        "enabled": "Notificações ativadas neste dispositivo.",
+        "disabled": "Notificações desativadas.",
+        "unsupported": "Este dispositivo/navegador não suporta notificações push. Dica: instale o app na tela inicial primeiro.",
+        "deniedHint": "As notificações estão bloqueadas. Libere nas configurações do navegador para ativar.",
+        "deniedToast": "Permissão de notificação negada.",
+        "error": "Não foi possível ativar as notificações."
+      },
       "score": {
         "title": "Pontuação e estrelas",
         "subtitle": "Defina os critérios de pontuação da sua operação. Cada empresa pode ter os seus.",

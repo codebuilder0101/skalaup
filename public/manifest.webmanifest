@@ -1,0 +1,15 @@
+{
+  "name": "SkalaUp",
+  "short_name": "SkalaUp",
+  "description": "Gestão de escalas, disponibilidade, presença e desempenho.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ec4899",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "/logo.png", "sizes": "1536x1024", "type": "image/png", "purpose": "any" }
+  ]
+}

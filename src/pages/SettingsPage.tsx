@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Settings, Globe, Star, Loader2, Save } from "lucide-react";
+import { Settings, Globe, Star, Loader2, Save, Bell, BellOff } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -14,6 +14,63 @@ import {
   SUPPORTED_LANGUAGES, setStoredLanguage, type SupportedLanguage,
 } from "@/i18n/config";
 import { getScoreSettings, saveScoreSettings, type ScoreSettings } from "@/lib/skalaup/settings";
+import { pushSupported, pushPermission, isPushSubscribed, enablePush, disablePush } from "@/lib/skalaup/push";
+
+// Enable/disable web push on this device (R13).
+function PushCard() {
+  const { t } = useTranslation();
+  const [supported, setSupported] = useState(true);
+  const [subscribed, setSubscribed] = useState(false);
+  const [denied, setDenied] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setSupported(pushSupported());
+    setDenied(pushPermission() === "denied");
+    void isPushSubscribed().then(setSubscribed);
+  }, []);
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (subscribed) {
+        await disablePush();
+        setSubscribed(false);
+        toast.success(t("skala.settings.push.disabled"));
+      } else {
+        const r = await enablePush();
+        if (r.ok) { setSubscribed(true); toast.success(t("skala.settings.push.enabled")); }
+        else if (r.error === "denied") { setDenied(true); toast.error(t("skala.settings.push.deniedToast")); }
+        else if (r.error === "unsupported") { setSupported(false); }
+        else { toast.error(t("skala.settings.push.error")); }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="glass-card rounded-lg p-6 space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Bell className="w-4 h-4" /> {t("skala.settings.push.title")}
+        </h2>
+        <p className="text-xs text-muted-foreground mt-1">{t("skala.settings.push.subtitle")}</p>
+      </div>
+      {!supported ? (
+        <p className="text-sm text-muted-foreground">{t("skala.settings.push.unsupported")}</p>
+      ) : denied && !subscribed ? (
+        <p className="text-sm text-amber-600">{t("skala.settings.push.deniedHint")}</p>
+      ) : (
+        <Button variant={subscribed ? "outline" : "default"} onClick={() => void toggle()} disabled={busy}>
+          {busy ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+            : subscribed ? <BellOff className="w-4 h-4 mr-1.5" /> : <Bell className="w-4 h-4 mr-1.5" />}
+          {subscribed ? t("skala.settings.push.disable") : t("skala.settings.push.enable")}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 // Point fields grouped for the editor. Keys must match server event types.
 const POINT_GROUPS: { titleKey: string; keys: string[] }[] = [
@@ -197,6 +254,8 @@ const SettingsPage = () => {
             </div>
           </div>
         </div>
+
+        <PushCard />
 
         {isOps && <ScoreConfigCard />}
       </div>

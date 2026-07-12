@@ -6,6 +6,7 @@
 // business action that triggered it, so callers `await notify(...)` inside a
 // try/catch-free path and we swallow errors here.
 import { pool } from "./db.js";
+import { sendPush } from "./push.js";
 
 /**
  * Insert one notification. Returns the row id, or null on failure.
@@ -18,6 +19,13 @@ export async function notify({ recipientUserId, type, title, body = null, data =
        values ($1, $2, $3, $4, $5::jsonb, now()) returning id`,
       [recipientUserId, type, title, body, JSON.stringify(data ?? {})],
     );
+    // Best-effort web push (never blocks or breaks the business action).
+    sendPush(recipientUserId, {
+      title,
+      body: body || "",
+      url: (data && typeof data.path === "string" && data.path) || "/notifications",
+      tag: type,
+    }).catch(() => {});
     return rows[0]?.id ?? null;
   } catch (e) {
     console.error(`notify(${type}) failed:`, e.message);

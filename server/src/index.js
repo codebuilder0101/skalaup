@@ -20,6 +20,7 @@ import vacancyRoutes from "./routes/vacancies.js";
 import notificationRoutes from "./routes/notifications.js";
 import extraShiftRoutes from "./routes/extraShifts.js";
 import settingsRoutes from "./routes/settings.js";
+import pushRoutes from "./routes/push.js";
 import { startScheduler } from "./scheduler.js";
 
 dotenv.config();
@@ -55,6 +56,7 @@ app.use("/api/vacancies", vacancyRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/extra-shifts", extraShiftRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/push", pushRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Bell, Sun, Moon, Globe, LogOut, UserCircle, Settings, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,6 +12,8 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { useNotifications } from "@/hooks/useNotifications";
+import { formatRelative, notificationLink, type AppNotification } from "@/lib/skalaup/notifications";
 
 function roleLabelFromKey(role: string, t: (key: string) => string) {
   if (role === "administrator") return t("skala.roles.administrator");
@@ -23,8 +25,18 @@ function roleLabelFromKey(role: string, t: (key: string) => string) {
 
 export function AppHeader() {
   const { t, i18n } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, logout, canAccess } = useAuth();
+  const navigate = useNavigate();
+  const lng = i18n.language || "pt-BR";
+  const { items, unreadCount, markRead, markAll } = useNotifications(10);
   const [theme, setThemeState] = useState<Theme>(getStoredTheme());
+
+  const openNotification = (n: AppNotification) => {
+    if (!n.readAt) void markRead(n.id);
+    const link = notificationLink(n);
+    if (link && canAccess(link)) navigate(link);
+    else navigate("/notifications");
+  };
 
   const toggleTheme = () => {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -45,16 +57,70 @@ export function AppHeader() {
       <TooltipProvider delayDuration={300}>
         <div className="flex items-center gap-1 sm:gap-2">
           {/* Notifications */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button asChild variant="ghost" size="icon" className="relative">
-                <Link to="/notifications" aria-label={t("header.notifications")}>
-                  <Bell className="w-5 h-5" />
-                </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative"
+                aria-label={t("skala.notifications.bellLabel", { count: unreadCount })}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-[18px] text-destructive-foreground">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("header.notifications")}</TooltipContent>
-          </Tooltip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 p-0">
+              <div className="flex items-center justify-between px-3 py-2">
+                <DropdownMenuLabel className="p-0 text-sm font-semibold">
+                  {t("skala.notifications.title")}
+                </DropdownMenuLabel>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); void markAll(); }}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {t("skala.notifications.markAllReadShort")}
+                  </button>
+                )}
+              </div>
+              <DropdownMenuSeparator className="my-0" />
+              {items.length === 0 ? (
+                <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  {t("skala.notifications.empty")}
+                </div>
+              ) : (
+                <div className="max-h-80 overflow-y-auto">
+                  {items.map((n) => (
+                    <DropdownMenuItem
+                      key={n.id}
+                      onSelect={() => openNotification(n)}
+                      className={`flex flex-col items-start gap-0.5 px-3 py-2.5 ${n.readAt ? "" : "bg-primary/[0.04]"}`}
+                    >
+                      <div className="flex w-full items-center gap-2">
+                        {!n.readAt && <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" aria-hidden />}
+                        <span className={`flex-1 truncate text-sm ${n.readAt ? "font-medium" : "font-semibold"}`}>
+                          {n.title}
+                        </span>
+                        <span className="flex-shrink-0 text-[11px] text-muted-foreground">
+                          {formatRelative(n.createdAt, lng, t("skala.notifications.justNow"))}
+                        </span>
+                      </div>
+                      {n.body && <span className="line-clamp-2 w-full text-xs text-muted-foreground">{n.body}</span>}
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              )}
+              <DropdownMenuSeparator className="my-0" />
+              <DropdownMenuItem asChild className="justify-center py-2 text-sm font-medium text-primary">
+                <Link to="/notifications">{t("skala.notifications.viewAll")}</Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Light / dark theme */}
           <Tooltip>

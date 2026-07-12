@@ -1341,6 +1341,19 @@
     "returnHome": "Voltar ao início"
   },
   "skala": {
+    "notifications": {
+      "title": "Notificações",
+      "subtitle": "Alertas da sua operação — trocas, feedbacks, presença e avisos.",
+      "empty": "Você não tem notificações.",
+      "emptyHint": "Novos avisos aparecem aqui.",
+      "markAllRead": "Marcar todas como lidas",
+      "markAllReadShort": "Marcar lidas",
+      "viewAll": "Ver todas",
+      "unread": "não lidas",
+      "loadError": "Falha ao carregar notificações.",
+      "justNow": "agora",
+      "bellLabel": "Notificações ({{count}} não lidas)"
+    },
     "common": {
       "loading": "Carregando…",
       "active": "Ativo",

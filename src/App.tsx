@@ -24,6 +24,7 @@ import PerformancePage from "./pages/PerformancePage";
 import SwapsPage from "./pages/SwapsPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import FinancialPage from "./pages/FinancialPage";
+import NotificationsPage from "./pages/NotificationsPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import NotFound from "./pages/NotFound";
 
@@ -59,7 +60,7 @@ const App = () => (
             <Route path="/feedback" element={<ProtectedRoute pathKey="/feedback"><FeedbackPage /></ProtectedRoute>} />
             <Route path="/performance" element={<ProtectedRoute pathKey="/performance"><PerformancePage /></ProtectedRoute>} />
             <Route path="/financial" element={<ProtectedRoute pathKey="/financial"><FinancialPage /></ProtectedRoute>} />
-            <Route path="/notifications" element={<ProtectedRoute pathKey="/notifications"><PlaceholderPage titleKey="nav.notifications" descriptionKey="skala.placeholder.notifications" /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute pathKey="/notifications"><NotificationsPage /></ProtectedRoute>} />
             <Route path="/my-schedule" element={<ProtectedRoute pathKey="/my-schedule"><MySchedulePage /></ProtectedRoute>} />
             <Route path="/vagas" element={<ProtectedRoute pathKey="/vagas"><VagasPage /></ProtectedRoute>} />
             <Route path="/today" element={<ProtectedRoute pathKey="/today"><TodayPage /></ProtectedRoute>} />

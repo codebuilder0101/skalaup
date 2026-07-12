@@ -1341,6 +1341,19 @@
     "returnHome": "Return to Home"
   },
   "skala": {
+    "notifications": {
+      "title": "Notifications",
+      "subtitle": "Alerts from your operation — swaps, feedback, attendance and reminders.",
+      "empty": "You have no notifications.",
+      "emptyHint": "New alerts show up here.",
+      "markAllRead": "Mark all as read",
+      "markAllReadShort": "Mark read",
+      "viewAll": "View all",
+      "unread": "unread",
+      "loadError": "Failed to load notifications.",
+      "justNow": "just now",
+      "bellLabel": "Notifications ({{count}} unread)"
+    },
     "common": {
       "loading": "Loading…",
       "active": "Active",

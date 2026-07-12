@@ -6,11 +6,15 @@ import { weekdayOf, isWeekendMandatory } from "../scheduleRules.js";
 import { monthRefOf } from "../payroll.js";
 
 // Shift swaps (§7). State machine:
-//   pending_target → (target accepts) pending_coordinator → (coordinator) approved
-//   any party can short-circuit to rejected/cancelled. On approval the shift is
-//   reassigned to the target (assigned_via='swap') and scoring is applied:
-//   −1 to requester (swap_requested), +2 to accepter (swap_accepted) capped at
-//   app_settings.swap_scoring_cap per accepter per month.
+//   pending_target → (target accepts) approved   ← auto-approved on acceptance
+//   any party can short-circuit to rejected/cancelled.
+// When the target accepts, the swap is applied straight away: the shift is
+// reassigned to the target (assigned_via='swap') and scoring is applied
+// (−1 requester / +2 accepter, capped at app_settings.swap_scoring_cap per
+// accepter per month). Coordination is notified and may REPROVAR an approved
+// swap while the shift is still upcoming — that reverses the reassignment and
+// voids the swap scoring (status → rejected). The old 'pending_coordinator'
+// gate is retired: coordinators no longer approve, they only veto after the fact.
 const router = Router();
 router.use(requireAuth);
 const requireOps = requireRole("coordinator", "administrator");
@@ -63,6 +67,50 @@ async function swapScoringCap() {
   return Number(row?.cap ?? 3);
 }
 
+// Apply an accepted swap: reassign the shift to the target and score it
+// (−1 requester, +2 accepter capped per month). Returns the points the accepter
+// actually earned (0 once the monthly cap is hit).
+async function applySwapAndScore(s) {
+  await pool.query(
+    `update public.schedule_assignments
+        set user_id=$2, assigned_via='swap', updated_at=now() where id=$1`,
+    [s.assignmentId, s.targetUserId],
+  );
+  await addScore({
+    userId: s.requesterUserId, eventType: "swap_requested",
+    points: SWAP_POINTS.swap_requested, occurredOn: s.date, referenceId: s.id,
+  });
+  const cap = await swapScoringCap();
+  const accepted = await one(
+    `select count(*)::int as n from public.score_events
+      where user_id=$1 and event_type='swap_accepted' and is_voided=false and month_ref=$2`,
+    [s.targetUserId, monthRefOf(s.date)],
+  );
+  const awardPoints = accepted.n < cap ? SWAP_POINTS.swap_accepted : 0;
+  await addScore({
+    userId: s.targetUserId, eventType: "swap_accepted",
+    points: awardPoints, occurredOn: s.date, referenceId: s.id,
+  });
+  return awardPoints;
+}
+
+// Reverse an approved swap: give the shift back to the requester and void the
+// swap's score events for both parties.
+async function reverseSwap(s) {
+  await pool.query(
+    `update public.schedule_assignments
+        set user_id=$2, assigned_via='coordinator', updated_at=now() where id=$1`,
+    [s.assignmentId, s.requesterUserId],
+  );
+  await pool.query(
+    `update public.score_events set is_voided=true
+      where reference_type='swap' and reference_id=$1 and is_voided=false`,
+    [s.id],
+  );
+  await recomputeScore(s.requesterUserId);
+  await recomputeScore(s.targetUserId);
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/swaps — role-scoped lists.
 //   freelancer/visitor → { incoming, outgoing }
@@ -71,14 +119,21 @@ async function swapScoringCap() {
 router.get("/", async (req, res) => {
   try {
     if (isOpsRole(req.user.role)) {
+      const today = new Date().toISOString().slice(0, 10);
+      // Reviewable = auto-approved swaps whose shift is still upcoming (can be reproved).
       const { rows: queue } = await pool.query(
-        `select ${SWAP_SELECT} ${SWAP_FROM} where s.status = 'pending_coordinator'
-          order by s.created_at asc`,
+        `select ${SWAP_SELECT} ${SWAP_FROM}
+          where s.status = 'approved' and a.date >= $1::date
+          order by a.date asc`,
+        [today],
       );
+      // History = everything else recent (reproved/cancelled, or already-worked approvals).
       const { rows: recent } = await pool.query(
         `select ${SWAP_SELECT} ${SWAP_FROM}
-          where s.status in ('approved','rejected','cancelled')
+          where s.status in ('rejected','cancelled')
+             or (s.status = 'approved' and a.date < $1::date)
           order by s.updated_at desc limit 30`,
+        [today],
       );
       return res.json({ queue, recent });
     }
@@ -178,10 +233,10 @@ router.post("/", async (req, res) => {
     if (targetClash) {
       return res.status(409).json({ error: "target_busy", message: "Este freelancer já está escalado neste turno." });
     }
-    // No other active swap already in flight for this shift.
+    // No other active swap already awaiting a target for this shift.
     const existing = await one(
       `select 1 from public.shift_swap_requests
-        where assignment_id = $1 and status in ('pending_target','pending_coordinator')`,
+        where assignment_id = $1 and status = 'pending_target'`,
       [b.assignmentId],
     );
     if (existing) {
@@ -224,12 +279,18 @@ router.post("/", async (req, res) => {
 });
 
 // POST /api/swaps/:id/respond { accept } — target accepts/declines (§7).
+// On accept the swap is applied immediately and coordination is notified (it can
+// still reprovar). No separate coordinator approval step.
 router.post("/:id/respond", async (req, res) => {
   try {
     const accept = !!(req.body || {}).accept;
     const s = await one(
-      `select id, requester_user_id as "requesterUserId", target_user_id as "targetUserId", status
-         from public.shift_swap_requests where id = $1`,
+      `select s.id, s.assignment_id as "assignmentId", s.requester_user_id as "requesterUserId",
+              s.target_user_id as "targetUserId", s.status,
+              a.date::text as date, a.shift_type as "shiftType"
+         from public.shift_swap_requests s
+         join public.schedule_assignments a on a.id = s.assignment_id
+        where s.id = $1`,
       [req.params.id],
     );
     if (!s) return res.status(404).json({ error: "Not found" });
@@ -251,26 +312,52 @@ router.post("/:id/respond", async (req, res) => {
       return res.json({ status: "rejected" });
     }
 
+    // Accept → re-validate the target (me) is still free for this slot, then apply.
+    const clash = await one(
+      `select 1 from public.schedule_assignments
+        where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'
+          and id <> $4`,
+      [s.targetUserId, s.date, s.shiftType, s.assignmentId],
+    );
+    if (clash) {
+      return res.status(409).json({ error: "target_busy", message: "Você já está escalado neste turno." });
+    }
+
+    const awardPoints = await applySwapAndScore(s);
     await pool.query(
-      `update public.shift_swap_requests set status='pending_coordinator', target_responded_at=now() where id=$1`,
+      `update public.shift_swap_requests set status='approved', target_responded_at=now() where id=$1`,
       [s.id],
     );
+
+    // Both freelancers: the swap is done.
+    for (const uid of [s.requesterUserId, s.targetUserId]) {
+      await notify({
+        recipientUserId: uid, type: "swap_request",
+        title: "Troca de turno realizada",
+        body: `${req.user.name || "O colega"} aceitou a troca — o turno já foi transferido.`,
+        data: { swapId: s.id, assignmentId: s.assignmentId },
+      });
+    }
+    // Coordination: informed, with the option to reprovar.
     for (const cid of await coordinatorIds()) {
       await notify({
         recipientUserId: cid, type: "swap_request",
-        title: "Troca aguardando aprovação",
-        body: `Uma troca de turno foi aceita e aguarda sua aprovação.`,
+        title: "Troca de turno realizada",
+        body: "Uma troca foi aceita e já vale. Você pode reprovar se necessário.",
         data: { swapId: s.id },
       });
     }
-    res.json({ status: "pending_coordinator" });
+    res.json({ status: "approved", accepterAwarded: awardPoints });
   } catch (e) {
     console.error("swap respond error:", e.message);
     res.status(500).json({ error: "Falha ao responder." });
   }
 });
 
-// POST /api/swaps/:id/decision { approve } — coordinator approves/rejects (§7).
+// POST /api/swaps/:id/decision { approve } — coordinator veto over an already-
+// approved swap. approve=true is a no-op confirm; approve=false REPROVES it,
+// reversing the reassignment and voiding the swap scoring, while the shift is
+// still upcoming.
 router.post("/:id/decision", requireOps, async (req, res) => {
   try {
     const approve = !!(req.body || {}).approve;
@@ -284,69 +371,39 @@ router.post("/:id/decision", requireOps, async (req, res) => {
       [req.params.id],
     );
     if (!s) return res.status(404).json({ error: "Not found" });
-    if (s.status !== "pending_coordinator") {
-      return res.status(400).json({ error: "bad_state", message: "Esta troca não está aguardando aprovação." });
+    if (s.status !== "approved") {
+      return res.status(400).json({ error: "bad_state", message: "Só é possível reprovar uma troca já realizada." });
     }
 
-    if (!approve) {
-      await pool.query(
-        `update public.shift_swap_requests
-            set status='rejected', coordinator_decision_by=$2, coordinator_decision_at=now() where id=$1`,
-        [s.id, req.user.sub],
-      );
-      for (const uid of [s.requesterUserId, s.targetUserId]) {
-        await notify({ recipientUserId: uid, type: "swap_request",
-          title: "Troca recusada", body: "A coordenação recusou a troca de turno.", data: { swapId: s.id } });
-      }
-      return res.json({ status: "rejected" });
-    }
+    // approve=true: nothing to do (the swap already applied on acceptance).
+    if (approve) return res.json({ status: "approved" });
 
-    // Re-validate the target is still free for the slot (§3.3).
+    // Reprovar is only allowed while the shift is still upcoming.
+    if (s.date < new Date().toISOString().slice(0, 10)) {
+      return res.status(400).json({ error: "past_shift", message: "Este turno já passou e não pode ser reprovado." });
+    }
+    // The requester must still be free to take the shift back.
     const clash = await one(
       `select 1 from public.schedule_assignments
         where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'
           and id <> $4`,
-      [s.targetUserId, s.date, s.shiftType, s.assignmentId],
+      [s.requesterUserId, s.date, s.shiftType, s.assignmentId],
     );
     if (clash) {
-      return res.status(409).json({ error: "target_busy", message: "O freelancer já está escalado neste turno; troca não pode ser aprovada." });
+      return res.status(409).json({ error: "requester_busy", message: "O solicitante já está escalado neste turno; não é possível reverter." });
     }
 
-    // Reassign the shift to the target (§7) and approve.
-    await pool.query(
-      `update public.schedule_assignments
-          set user_id=$2, assigned_via='swap', updated_at=now() where id=$1`,
-      [s.assignmentId, s.targetUserId],
-    );
+    await reverseSwap(s);
     await pool.query(
       `update public.shift_swap_requests
-          set status='approved', coordinator_decision_by=$2, coordinator_decision_at=now() where id=$1`,
+          set status='rejected', coordinator_decision_by=$2, coordinator_decision_at=now() where id=$1`,
       [s.id, req.user.sub],
     );
-
-    // Scoring (§7): −1 requester; +2 accepter, capped per month (swap_scoring_cap).
-    await addScore({
-      userId: s.requesterUserId, eventType: "swap_requested",
-      points: SWAP_POINTS.swap_requested, occurredOn: s.date, referenceId: s.id,
-    });
-    const cap = await swapScoringCap();
-    const accepted = await one(
-      `select count(*)::int as n from public.score_events
-        where user_id=$1 and event_type='swap_accepted' and is_voided=false
-          and month_ref=$2`,
-      [s.targetUserId, monthRefOf(s.date)],
-    );
-    const awardPoints = accepted.n < cap ? SWAP_POINTS.swap_accepted : 0;
-    await addScore({
-      userId: s.targetUserId, eventType: "swap_accepted",
-      points: awardPoints, occurredOn: s.date, referenceId: s.id,
-    });
-
     for (const uid of [s.requesterUserId, s.targetUserId]) {
       await notify({ recipientUserId: uid, type: "swap_request",
-        title: "Troca aprovada", body: "A coordenação aprovou a troca de turno.", data: { swapId: s.id } });
+        title: "Troca reprovada", body: "A coordenação reprovou a troca — o turno voltou para o solicitante.", data: { swapId: s.id } });
     }
-    res.json({ status: "approved", accepterAwarded: awardPoints });
+    res.json({ status: "rejected" });
   } catch (e) {
     console.error("swap decision error:", e.message);
     res.status(500).json({ error: "Falha ao decidir." });
@@ -363,7 +420,7 @@ router.delete("/:id", async (req, res) => {
     );
     if (!s) return res.status(404).json({ error: "Not found" });
     if (s.requesterUserId !== req.user.sub) return res.status(403).json({ error: "Forbidden" });
-    if (!["pending_target", "pending_coordinator"].includes(s.status)) {
+    if (s.status !== "pending_target") {
       return res.status(400).json({ error: "bad_state", message: "Esta troca não pode mais ser cancelada." });
     }
     await pool.query(`update public.shift_swap_requests set status='cancelled' where id=$1`, [s.id]);

@@ -147,9 +147,10 @@ export default function SwapsPage() {
           </div>
         ) : isOps ? (
           <>
-            {/* Coordinator: approval queue */}
+            {/* Coordinator: completed swaps — auto-approved, reversible while upcoming */}
             <Card className="p-5">
-              <h2 className="font-semibold text-foreground mb-2">{t("skala.swaps.pendingApproval")}</h2>
+              <h2 className="font-semibold text-foreground">{t("skala.swaps.pendingApproval")}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-3">{t("skala.swaps.recentHint")}</p>
               {(lists.queue ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">{t("skala.swaps.emptyQueue")}</p>
               ) : (
@@ -162,13 +163,9 @@ export default function SwapsPage() {
                         {s.affectsWeekendBonus ? ` · ${t("skala.swaps.weekendBonusFlag")}` : ""}
                       </p>
                       <div className="flex gap-2 mt-2">
-                        <Button size="sm" disabled={busy === s.id}
-                          onClick={() => act(s.id, () => decideSwap(s.id, true), t("skala.swaps.approved"))}>
-                          <Check className="w-4 h-4 mr-1" />{t("skala.swaps.approve")}
-                        </Button>
                         <Button size="sm" variant="outline" className="text-destructive" disabled={busy === s.id}
-                          onClick={() => act(s.id, () => decideSwap(s.id, false), t("skala.swaps.rejected"))}>
-                          <X className="w-4 h-4 mr-1" />{t("skala.swaps.reject")}
+                          onClick={() => act(s.id, () => decideSwap(s.id, false), t("skala.swaps.reproved"))}>
+                          <X className="w-4 h-4 mr-1" />{t("skala.swaps.reprovar")}
                         </Button>
                       </div>
                     </div>
@@ -256,7 +253,7 @@ export default function SwapsPage() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {statusBadge(s.status)}
-                        {(s.status === "pending_target" || s.status === "pending_coordinator") && (
+                        {s.status === "pending_target" && (
                           <Button size="sm" variant="ghost" className="text-destructive" disabled={busy === s.id}
                             onClick={() => act(s.id, () => cancelSwap(s.id), t("skala.swaps.cancelled"))}>
                             {t("skala.swaps.cancel")}

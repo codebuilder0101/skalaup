@@ -1694,6 +1694,7 @@
       "assignAnyone": "+ Assign anyone",
       "hideAllMembers": "Show only available",
       "allMembers": "All team members",
+      "otherMembers": "Other registered members",
       "noMembers": "No active team members.",
       "eligibilityWarning": "Assigned, but this team member is not confirmed for all 4 weekend shifts of the previous weekend (weekday eligibility).",
       "publish": "Publish schedule",

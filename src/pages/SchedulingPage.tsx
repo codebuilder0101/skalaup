@@ -105,8 +105,10 @@ function ScheduleCell({
   const [loadingCand, setLoadingCand] = useState(false);
   const [working, setWorking] = useState(false);
   const [slotIdx, setSlotIdx] = useState(0);
-  // Fallback pool: all active members, shown on demand when availability is thin (§3.3).
-  const [showAll, setShowAll] = useState(false);
+  // All active members are shown by default so every registered freelancer is
+  // assignable, not only those who declared availability (§3.3). The list can be
+  // collapsed to the availability-ranked waiting list.
+  const [showAll, setShowAll] = useState(true);
   const [allMembers, setAllMembers] = useState<SlotCandidate[]>([]);
   const [loadingAll, setLoadingAll] = useState(false);
 
@@ -143,7 +145,7 @@ function ScheduleCell({
   }, [cell.date, cell.assigned, shiftType, restaurantId]);
 
   useEffect(() => {
-    if (open) { setSlotIdx(0); setShowAll(false); void loadCandidates(); }
+    if (open) { setSlotIdx(0); setShowAll(true); void loadCandidates(); void loadAllMembers(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -315,7 +317,12 @@ function ScheduleCell({
     </button>
   );
 
-  // Shared panel: slot header + assigned list + waiting list + "assign anyone".
+  // Every registered member not already in the availability waiting list — so the
+  // coordinator sees the full roster, with availability-declarers ranked on top.
+  const candidateIds = new Set(candidates.map((c) => c.userId));
+  const otherMembers = allMembers.filter((m) => !candidateIds.has(m.userId));
+
+  // Shared panel: slot header + assigned list + waiting list + all other members.
   // Rendered inside a Popover on the desktop grid, or a bottom Sheet on touch/mobile.
   const panelBody = (
     <>
@@ -381,7 +388,8 @@ function ScheduleCell({
           candidates.map(renderRow)
         )}
 
-        {/* Fallback (§3.3): staff a slot from ALL members when availability is thin. */}
+        {/* Full roster (§3.3): every other registered member, shown by default so
+            anyone can be staffed — collapsible to just the availability list. */}
         {canEdit && (
           <div className="pt-2 mt-1 border-t border-border">
             <button type="button" onClick={() => void toggleShowAll()}
@@ -391,14 +399,14 @@ function ScheduleCell({
             {showAll && (
               <div className="mt-1.5 space-y-1">
                 <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-                  {t("skala.scheduleBuilder.allMembers")} ({allMembers.length})
+                  {t("skala.scheduleBuilder.otherMembers")} ({otherMembers.length})
                 </p>
                 {loadingAll ? (
                   <p className="text-xs text-muted-foreground">{t("skala.common.loading")}</p>
-                ) : allMembers.length === 0 ? (
+                ) : otherMembers.length === 0 ? (
                   <p className="text-xs text-muted-foreground">{t("skala.scheduleBuilder.noMembers")}</p>
                 ) : (
-                  allMembers.map(renderRow)
+                  otherMembers.map(renderRow)
                 )}
               </div>
             )}

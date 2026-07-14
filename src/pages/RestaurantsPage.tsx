@@ -257,7 +257,7 @@ export default function RestaurantsPage() {
               <Label>{t("skala.restaurants.address")}</Label>
               <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>{t("skala.restaurants.cep")}</Label>
                 <Input
@@ -301,20 +301,20 @@ export default function RestaurantsPage() {
                       <p className="text-xs text-muted-foreground">{t("skala.restaurants.noSlots")}</p>
                     )}
                     {list.map((s, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
+                      <div key={idx} className="flex flex-wrap items-center gap-2">
                         <Input
-                          type="time" className="flex-1"
+                          type="time" className="flex-1 min-w-[110px]"
                           value={s.startTime}
                           onChange={(e) => update(idx, { startTime: e.target.value })}
                         />
                         <span className="text-muted-foreground text-xs">–</span>
                         <Input
-                          type="time" className="flex-1"
+                          type="time" className="flex-1 min-w-[110px]"
                           value={s.endTime}
                           onChange={(e) => update(idx, { endTime: e.target.value })}
                         />
                         <Input
-                          className="w-28"
+                          className="w-full sm:w-28"
                           placeholder={t("skala.restaurants.slotLabelPlaceholder")}
                           value={s.label}
                           onChange={(e) => update(idx, { label: e.target.value })}
@@ -340,7 +340,7 @@ export default function RestaurantsPage() {
             {/* --- Pay --- */}
             <div className="space-y-3 pt-3 border-t">
               <h4 className="text-sm font-semibold text-foreground">{t("skala.restaurants.sectionPay")}</h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>{t("skala.restaurants.basePay")}</Label>
                   <Input
@@ -365,7 +365,7 @@ export default function RestaurantsPage() {
             {/* --- Discounts & bonus --- */}
             <div className="space-y-3 pt-3 border-t">
               <h4 className="text-sm font-semibold text-foreground">{t("skala.restaurants.sectionDiscounts")}</h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>{t("skala.restaurants.lateDiscount")}</Label>
                   <Input

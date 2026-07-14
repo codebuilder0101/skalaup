@@ -1707,6 +1707,7 @@
       "rangeTo": "End date",
       "dutyRestaurant": "Shift / Client",
       "noRestaurants": "No active clients to schedule.",
+      "noDemand": "No demand on this day.",
       "pendingN": "{{n}} pending",
       "legendDeficit": "Deficit",
       "readOnly": "Read-only",

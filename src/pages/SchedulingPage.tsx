@@ -17,6 +17,10 @@ import {
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/contexts/AuthContext";
 import { CycleControl } from "@/components/CycleControl";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
@@ -81,6 +85,7 @@ function Stars({ level }: { level: number | null }) {
 // ---- One grid cell (restaurant × shift × day) with assign popover ----------
 function ScheduleCell({
   cell, restaurantId, shiftType, startTime, endTime, slots, cycleId, isToday, busyUserIds, canEdit, onChanged,
+  variant = "grid",
 }: {
   cell: WeekCell;
   restaurantId: string;
@@ -93,6 +98,7 @@ function ScheduleCell({
   busyUserIds: Set<string>;
   canEdit: boolean;
   onChanged: () => Promise<void>;
+  variant?: "grid" | "detail";
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -229,45 +235,93 @@ function ScheduleCell({
     if (showAll) void loadAllMembers();
   };
 
+  const gridTrigger = (
+    <button
+      type="button"
+      disabled={!canEdit}
+      className={`text-left w-full h-full min-h-[64px] p-1.5 border-l border-t border-border/60 transition-colors
+        ${isToday ? "bg-primary/5" : ""} ${canEdit ? "hover:bg-accent/40 cursor-pointer" : "cursor-default"}`}
+    >
+      <div className="flex items-center justify-between mb-1">
+        {emptyNoDemand ? (
+          <span className="text-[10px] text-muted-foreground/50">—</span>
+        ) : (
+          <Badge
+            variant={hasDeficit ? "destructive" : "secondary"}
+            className="text-[10px] px-1.5 py-0"
+            title={hasDeficit ? t("skala.scheduleBuilder.legendDeficit") : undefined}
+          >
+            {cell.assignedCount}
+          </Badge>
+        )}
+        {cell.isWeekendMandatory && <Star className="w-3 h-3 fill-amber-400 text-amber-400" />}
+      </div>
+      <div className="space-y-0.5">
+        {cell.assigned.map((a) => (
+          <div key={a.assignmentId} className="flex items-center gap-1 rounded bg-emerald-500/10 px-1 py-0.5">
+            <span className="text-[11px] text-foreground truncate flex-1">{a.name.split(" ")[0]}</span>
+            <span className="text-[9px] text-muted-foreground">{Number(a.score).toFixed(0)}</span>
+          </div>
+        ))}
+        {!emptyNoDemand && cell.deficit > 0 && (
+          <div className="flex items-center gap-1 text-[10px] text-destructive">
+            <Plus className="w-3 h-3" />{t("skala.scheduleBuilder.pendingN", { n: cell.deficit })}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+
+  // Detail trigger — full-width list block used in the mobile day view (§5.2).
+  const detailTrigger = (
+    <button
+      type="button"
+      disabled={!canEdit}
+      className={`text-left w-full rounded-lg border border-border/60 p-2.5 transition-colors
+        ${canEdit ? "hover:bg-accent/40 active:bg-accent/60 cursor-pointer" : "cursor-default"}`}
+    >
+      <div className="flex items-center gap-2">
+        {emptyNoDemand ? (
+          <span className="text-xs text-muted-foreground/60">{t("skala.scheduleBuilder.noDemand")}</span>
+        ) : (
+          <Badge
+            variant={hasDeficit ? "destructive" : "secondary"}
+            className="text-[11px] px-1.5 py-0"
+          >
+            {cell.assignedCount}{cell.required > 0 ? `/${cell.required}` : ""}
+          </Badge>
+        )}
+        {cell.isWeekendMandatory && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />}
+        {canEdit && (
+          <span className="ml-auto inline-flex items-center gap-1 text-xs text-primary">
+            <Plus className="w-3.5 h-3.5" />{t("skala.scheduleBuilder.assign")}
+          </span>
+        )}
+      </div>
+      {cell.assigned.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {cell.assigned.map((a) => (
+            <span key={a.assignmentId} className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5">
+              <span className="text-[11px] text-foreground">{a.name.split(" ")[0]}</span>
+              <span className="text-[9px] text-muted-foreground">{Number(a.score).toFixed(0)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {!emptyNoDemand && cell.deficit > 0 && (
+        <div className="mt-1 flex items-center gap-1 text-[11px] text-destructive">
+          <Plus className="w-3 h-3" />{t("skala.scheduleBuilder.pendingN", { n: cell.deficit })}
+        </div>
+      )}
+    </button>
+  );
+
   return (
     <Popover open={open} onOpenChange={canEdit ? setOpen : undefined}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          disabled={!canEdit}
-          className={`text-left w-full h-full min-h-[64px] p-1.5 border-l border-t border-border/60 transition-colors
-            ${isToday ? "bg-primary/5" : ""} ${canEdit ? "hover:bg-accent/40 cursor-pointer" : "cursor-default"}`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            {emptyNoDemand ? (
-              <span className="text-[10px] text-muted-foreground/50">—</span>
-            ) : (
-              <Badge
-                variant={hasDeficit ? "destructive" : "secondary"}
-                className="text-[10px] px-1.5 py-0"
-                title={hasDeficit ? t("skala.scheduleBuilder.legendDeficit") : undefined}
-              >
-                {cell.assignedCount}
-              </Badge>
-            )}
-            {cell.isWeekendMandatory && <Star className="w-3 h-3 fill-amber-400 text-amber-400" />}
-          </div>
-          <div className="space-y-0.5">
-            {cell.assigned.map((a) => (
-              <div key={a.assignmentId} className="flex items-center gap-1 rounded bg-emerald-500/10 px-1 py-0.5">
-                <span className="text-[11px] text-foreground truncate flex-1">{a.name.split(" ")[0]}</span>
-                <span className="text-[9px] text-muted-foreground">{Number(a.score).toFixed(0)}</span>
-              </div>
-            ))}
-            {!emptyNoDemand && cell.deficit > 0 && (
-              <div className="flex items-center gap-1 text-[10px] text-destructive">
-                <Plus className="w-3 h-3" />{t("skala.scheduleBuilder.pendingN", { n: cell.deficit })}
-              </div>
-            )}
-          </div>
-        </button>
+        {variant === "detail" ? detailTrigger : gridTrigger}
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="start">
+      <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] p-0" align="start">
         <div className="p-3 border-b border-border">
           <p className="text-sm font-semibold flex items-center gap-1.5">
             {shiftType === "lunch" ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
@@ -359,15 +413,116 @@ function ScheduleCell({
   );
 }
 
+// ---- Mobile month calendar (Google-Calendar style) ------------------------
+type DayAgg = { assigned: number; deficit: number; required: number; weekend: boolean; hasDemand: boolean };
+
+export function aggregateByDay(board: WeekBoard | null): Map<string, DayAgg> {
+  const m = new Map<string, DayAgg>();
+  board?.shifts.forEach((sg) =>
+    sg.restaurants.forEach((r) =>
+      r.cells.forEach((c) => {
+        const cur = m.get(c.date) ?? { assigned: 0, deficit: 0, required: 0, weekend: false, hasDemand: false };
+        cur.assigned += c.assignedCount;
+        cur.deficit += c.deficit;
+        cur.required += c.required;
+        cur.weekend = cur.weekend || c.isWeekendMandatory;
+        cur.hasDemand = cur.hasDemand || c.required > 0 || c.assignedCount > 0;
+        m.set(c.date, cur);
+      })));
+  return m;
+}
+
+export function MonthCalendar({
+  monthAnchor, board, today, lng, selectedDay, onSelectDay,
+}: {
+  monthAnchor: string;
+  board: WeekBoard | null;
+  today: string;
+  lng: string;
+  selectedDay: string | null;
+  onSelectDay: (date: string) => void;
+}) {
+  const agg = useMemo(() => aggregateByDay(board), [board]);
+  const monthKey = monthAnchor.slice(0, 7);
+
+  // Monday-first grid covering the whole month (§4.1).
+  const cells = useMemo(() => {
+    const first = monthRefOf(monthAnchor);
+    const gridStart = mondayOf(first);
+    const daysInMonth = Number(endOfMonth(monthAnchor).slice(8, 10));
+    const offset = Math.round(
+      (Date.parse(`${first}T00:00:00Z`) - Date.parse(`${gridStart}T00:00:00Z`)) / 86400000,
+    );
+    const weeks = Math.ceil((offset + daysInMonth) / 7);
+    return Array.from({ length: weeks * 7 }, (_, i) => addDays(gridStart, i));
+  }, [monthAnchor]);
+
+  // Localized weekday abbreviations, Monday-first (2024-01-01 was a Monday).
+  const weekdayLabels = useMemo(() => {
+    const fmt = new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" });
+    return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(`${addDays("2024-01-01", i)}T00:00:00Z`)));
+  }, [lng]);
+
+  return (
+    <Card className="p-2 sm:p-3">
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {weekdayLabels.map((w, i) => (
+          <div key={i} className="text-center text-[10px] font-medium uppercase text-muted-foreground py-1">{w}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((date) => {
+          const inMonth = date.slice(0, 7) === monthKey;
+          const a = agg.get(date);
+          const isToday = date === today;
+          const isSelected = date === selectedDay;
+          const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
+          const weekend = [0, 5, 6].includes(dow); // Fri/Sat/Sun
+          return (
+            <button
+              key={date}
+              type="button"
+              onClick={() => onSelectDay(date)}
+              className={`min-h-[52px] rounded-lg border p-1 flex flex-col items-center gap-0.5 transition-colors
+                ${isSelected ? "border-primary bg-primary/10" : "border-border/50 hover:bg-accent/40"}
+                ${isToday && !isSelected ? "ring-1 ring-primary/50" : ""}
+                ${inMonth ? "" : "opacity-40"}`}
+              aria-label={`${Number(date.slice(8, 10))} ${weekdayLabels[(dow + 6) % 7]}${a?.hasDemand ? `, ${a.assigned} ${a.deficit > 0 ? `déficit ${a.deficit}` : ""}` : ""}`}
+            >
+              <span className={`text-xs font-semibold ${isToday ? "text-primary" : weekend ? "text-primary/80" : "text-foreground"}`}>
+                {Number(date.slice(8, 10))}
+              </span>
+              <div className="flex items-center gap-0.5">
+                {a?.hasDemand && (
+                  <span
+                    className={`text-[10px] leading-none px-1 py-0.5 rounded font-medium ${
+                      a.deficit > 0 ? "bg-destructive/15 text-destructive" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                    }`}
+                  >
+                    {a.assigned}
+                  </span>
+                )}
+                {a?.weekend && <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 export default function SchedulingPage() {
   const { t, i18n } = useTranslation();
   useAuth();
   const lng = i18n.language || "pt-BR";
+  const isMobile = useIsMobile();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [restaurantFilter, setRestaurantFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [anchor, setAnchor] = useState<string>(() => todayIso());
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [customStart, setCustomStart] = useState<string>(() => mondayOf(todayIso()));
   const [customEnd, setCustomEnd] = useState<string>(() => addDays(mondayOf(todayIso()), 6));
   const [cycle, setCycle] = useState<AvailabilityCycle | null>(null);
@@ -391,7 +546,9 @@ export default function SchedulingPage() {
   }, []);
 
   // The visible date range, derived from the view mode (§R2: week / month / custom).
+  // On mobile the scheduling UI is always a month calendar, so force a month range.
   const range = useMemo<{ start: string; end: string } | null>(() => {
+    if (isMobile) return { start: monthRefOf(anchor), end: endOfMonth(anchor) };
     if (viewMode === "month") return { start: monthRefOf(anchor), end: endOfMonth(anchor) };
     if (viewMode === "custom") {
       if (!customStart || !customEnd) return null;
@@ -401,7 +558,7 @@ export default function SchedulingPage() {
     }
     const start = mondayOf(anchor);
     return { start, end: addDays(start, 6) };
-  }, [viewMode, anchor, customStart, customEnd]);
+  }, [isMobile, viewMode, anchor, customStart, customEnd]);
 
   const loadBoard = useCallback(async () => {
     if (!range) { setBoard(null); setCycle(null); return; }
@@ -436,19 +593,44 @@ export default function SchedulingPage() {
   const canEdit = !!cycle && !published;
   const today = todayIso();
 
+  // Day-detail data for the mobile calendar: the selected date's shifts →
+  // restaurants (only those with demand or assignments), reusing the loaded board.
+  const daySections = useMemo(() => {
+    if (!selectedDay || !board) return [];
+    return board.shifts
+      .map((sg) => ({
+        shiftType: sg.shiftType,
+        rows: sg.restaurants
+          .map((row) => ({ row, cell: row.cells.find((c) => c.date === selectedDay) }))
+          .filter((x): x is { row: typeof x.row; cell: WeekCell } =>
+            !!x.cell && (x.cell.required > 0 || x.cell.assignedCount > 0)),
+      }))
+      .filter((s) => s.rows.length > 0);
+  }, [selectedDay, board]);
+
+  const dayIsWeekendBonus = daySections.some((s) => s.rows.some((r) => r.cell.isWeekendMandatory));
+
+  const shiftSelectedDay = (delta: number) => {
+    if (!selectedDay) return;
+    const next = addDays(selectedDay, delta);
+    if (next.slice(0, 7) !== anchor.slice(0, 7)) setAnchor(next);
+    setSelectedDay(next);
+  };
+
   const rangeLabel = useMemo(() => {
     if (!range) return "—";
-    if (viewMode === "month") {
+    if (isMobile || viewMode === "month") {
       return new Intl.DateTimeFormat(lng, { month: "long", year: "numeric", timeZone: "UTC" })
         .format(new Date(`${range.start}T00:00:00Z`));
     }
     const f = (d: string, o: Intl.DateTimeFormatOptions) =>
       new Intl.DateTimeFormat(lng, { ...o, timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
     return `${f(range.start, { month: "short", day: "numeric" })} – ${f(range.end, { month: "short", day: "numeric", year: "numeric" })}`;
-  }, [range, viewMode, lng]);
+  }, [range, isMobile, viewMode, lng]);
 
-  const goPrev = () => setAnchor(viewMode === "month" ? addMonths(anchor, -1) : addDays(anchor, -7));
-  const goNext = () => setAnchor(viewMode === "month" ? addMonths(anchor, 1) : addDays(anchor, 7));
+  const stepMonth = isMobile || viewMode === "month";
+  const goPrev = () => setAnchor(stepMonth ? addMonths(anchor, -1) : addDays(anchor, -7));
+  const goNext = () => setAnchor(stepMonth ? addMonths(anchor, 1) : addDays(anchor, 7));
   const goToday = () => {
     setAnchor(todayIso());
     if (viewMode === "custom") {
@@ -532,8 +714,8 @@ export default function SchedulingPage() {
 
             {/* View switch + period navigation + actions */}
             <div className="flex flex-wrap items-center gap-2.5 xl:shrink-0">
-              {/* View-mode switch (week / month / custom) */}
-              <div className="flex items-center rounded-xl border border-border/70 bg-card/70 p-1 shadow-sm backdrop-blur">
+              {/* View-mode switch (week / month / custom) — desktop only; mobile is always the month calendar */}
+              <div className="hidden sm:flex items-center rounded-xl border border-border/70 bg-card/70 p-1 shadow-sm backdrop-blur">
                 {(["week", "month", "custom"] as ViewMode[]).map((m) => (
                   <Button
                     key={m}
@@ -547,7 +729,7 @@ export default function SchedulingPage() {
               </div>
 
               {/* Period navigator (week/month) or custom date range */}
-              {viewMode === "custom" ? (
+              {!isMobile && viewMode === "custom" ? (
                 <div className="flex items-center gap-1.5 rounded-xl border border-border/70 bg-card/70 p-1.5 shadow-sm backdrop-blur">
                   <Input
                     type="date" value={customStart} max={customEnd || undefined}
@@ -628,7 +810,7 @@ export default function SchedulingPage() {
               </div>
             )}
             {/* Legend */}
-            <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
+            <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span className="flex items-center gap-1"><Sun className="w-3.5 h-3.5 text-amber-500" />{t("skala.scheduleBuilder.shift.lunch")}</span>
               <span className="flex items-center gap-1"><Moon className="w-3.5 h-3.5 text-indigo-500" />{t("skala.scheduleBuilder.shift.dinner")}</span>
               <span className="flex items-center gap-1"><Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />{t("skala.scheduleBuilder.bonusShift")}</span>
@@ -637,8 +819,23 @@ export default function SchedulingPage() {
           </div>
         </Card>
 
-        {/* Grid */}
-        {loading ? (
+        {/* Board — mobile month calendar / desktop grid */}
+        {isMobile ? (
+          <div className="space-y-2">
+            {loading && <p className="text-xs text-muted-foreground">{t("skala.common.loading")}</p>}
+            <MonthCalendar
+              monthAnchor={anchor}
+              board={board}
+              today={today}
+              lng={lng}
+              selectedDay={selectedDay}
+              onSelectDay={(date) => {
+                if (date.slice(0, 7) !== anchor.slice(0, 7)) setAnchor(date);
+                setSelectedDay(date);
+              }}
+            />
+          </div>
+        ) : loading ? (
           <p className="text-sm text-muted-foreground">{t("skala.common.loading")}</p>
         ) : !board || board.shifts.length === 0 ? (
           <Card className="p-10 text-center text-muted-foreground">{t("skala.scheduleBuilder.noRestaurants")}</Card>
@@ -715,6 +912,81 @@ export default function SchedulingPage() {
             </div>
           </Card>
         )}
+
+        {/* Mobile day detail (§5) — tap a calendar day to assign/manage that date */}
+        <Sheet open={isMobile && !!selectedDay} onOpenChange={(o) => { if (!o) setSelectedDay(null); }}>
+          <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl px-4 pb-6">
+            <SheetHeader className="text-left">
+              <SheetTitle className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8 -ml-2" onClick={() => shiftSelectedDay(-1)} aria-label="Previous day">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="capitalize text-base">{selectedDay ? formatDateBR(selectedDay) : ""}</span>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftSelectedDay(1)} aria-label="Next day">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                {dayIsWeekendBonus && (
+                  <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px]">
+                    {t("skala.scheduleBuilder.bonusShift")}
+                  </Badge>
+                )}
+              </SheetTitle>
+            </SheetHeader>
+
+            <div className="mt-3 space-y-4">
+              {loading ? (
+                <p className="text-sm text-muted-foreground">{t("skala.common.loading")}</p>
+              ) : daySections.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">{t("skala.scheduleBuilder.noDemand")}</p>
+              ) : (
+                daySections.map((s) => (
+                  <div key={s.shiftType} className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                      {s.shiftType === "lunch"
+                        ? <Sun className="w-4 h-4 text-amber-500" />
+                        : <Moon className="w-4 h-4 text-indigo-500" />}
+                      {t(`skala.scheduleBuilder.shift.${s.shiftType}`)}
+                      <span className="text-muted-foreground font-normal text-xs">
+                        {s.rows[0]?.row.startTime.slice(0, 5)}–{s.rows[0]?.row.endTime.slice(0, 5)}
+                      </span>
+                    </div>
+                    {s.rows.map(({ row, cell }) => {
+                      const mayEditRow = scope.canEditAll || scope.ids.has(row.restaurantId);
+                      const rowCanEdit = canEdit && mayEditRow;
+                      const readOnlyForManager = canEdit && !mayEditRow;
+                      return (
+                        <div key={row.restaurantId} className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <span className="truncate">{row.restaurantName}</span>
+                            {readOnlyForManager && (
+                              <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
+                                {t("skala.scheduleBuilder.readOnly")}
+                              </span>
+                            )}
+                          </div>
+                          <ScheduleCell
+                            variant="detail"
+                            cell={cell}
+                            restaurantId={row.restaurantId}
+                            shiftType={s.shiftType}
+                            startTime={row.startTime}
+                            endTime={row.endTime}
+                            slots={row.slots}
+                            cycleId={board?.cycleId ?? null}
+                            isToday={cell.date === today}
+                            busyUserIds={busyByDateShift.get(`${cell.date}|${s.shiftType}`) ?? new Set()}
+                            canEdit={rowCanEdit}
+                            onChanged={loadBoard}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </AppLayout>
   );

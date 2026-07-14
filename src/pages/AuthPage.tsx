@@ -183,7 +183,7 @@ export default function AuthPage() {
 
                 {role === "freelancer" && (
                   <>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label htmlFor="cpf">{t("skala.auth.cpf")}</Label>
                         <Input id="cpf" inputMode="numeric" placeholder="000.000.000-00"
@@ -196,7 +196,7 @@ export default function AuthPage() {
                           onChange={(e) => setPixKey(e.target.value)} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label htmlFor="phone">{t("skala.auth.phone")}</Label>
                         <Input id="phone" inputMode="tel" placeholder="(00) 00000-0000"

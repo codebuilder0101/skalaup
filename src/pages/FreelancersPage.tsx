@@ -259,7 +259,7 @@ export default function FreelancersPage() {
                 <p className="text-[11px] text-muted-foreground">{t("skala.freelancers.emailHint")}</p>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>{t("skala.auth.cpf")}</Label>
                 <Input value={form.cpf} inputMode="numeric" placeholder="000.000.000-00"
@@ -271,7 +271,7 @@ export default function FreelancersPage() {
                   onChange={(e) => setForm({ ...form, pixKey: e.target.value })} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>{t("skala.auth.phone")}</Label>
                 <Input value={form.phone} inputMode="tel" placeholder="(00) 00000-0000"

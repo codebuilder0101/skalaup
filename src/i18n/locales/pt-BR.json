@@ -1707,6 +1707,7 @@
       "rangeTo": "Data final",
       "dutyRestaurant": "Turno / Cliente",
       "noRestaurants": "Nenhum cliente ativo para escalar.",
+      "noDemand": "Sem demanda neste dia.",
       "pendingN": "{{n}} pendente(s)",
       "legendDeficit": "Déficit",
       "readOnly": "Somente leitura",

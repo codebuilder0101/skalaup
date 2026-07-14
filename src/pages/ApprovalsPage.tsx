@@ -73,7 +73,7 @@ export default function ApprovalsPage() {
           <p className="text-sm text-muted-foreground mt-1">{t("skala.approvals.subtitle")}</p>
         </div>
 
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (
             <Button key={f} size="sm" variant={filter === f ? "secondary" : "ghost"} onClick={() => setFilter(f)}>
               {t(`skala.approvals.filter.${f}`)}
@@ -91,8 +91,8 @@ export default function ApprovalsPage() {
         ) : (
           <div className="space-y-2">
             {items.map((u) => (
-              <Card key={u.id} className="p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">
+              <Card key={u.id} className="p-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+                <div className="w-10 h-10 shrink-0 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">
                   {u.name.trim().charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -102,7 +102,7 @@ export default function ApprovalsPage() {
                 <Badge variant="outline">{roleLabel(u.role)}</Badge>
                 {statusBadge(u.status)}
                 {u.status === "pending" && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 ml-auto">
                     <Button size="sm" disabled={busyId === u.id} onClick={() => void act(u.id, "approve")}>
                       <Check className="w-4 h-4 mr-1" />{t("skala.approvals.approve")}
                     </Button>

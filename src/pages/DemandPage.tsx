@@ -250,13 +250,13 @@ export default function DemandPage() {
               ) : (
                 <div className="space-y-1.5">
                   {sortedOverrides.map((o) => (
-                    <div key={o.id} className="flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2">
-                      <span className="text-sm font-medium text-foreground w-32">{fmtDate(o.date)}</span>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground w-24">
+                    <div key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border/60 px-3 py-2">
+                      <span className="text-sm font-medium text-foreground w-28 shrink-0">{fmtDate(o.date)}</span>
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground w-24 shrink-0">
                         {shiftIcon(o.shiftType)}{t(`skala.scheduleBuilder.shift.${o.shiftType}`)}
                       </span>
-                      <span className="text-sm font-semibold text-primary w-10">{o.requiredCount}</span>
-                      <span className="flex-1 truncate text-xs text-muted-foreground">{o.reason || "—"}</span>
+                      <span className="text-sm font-semibold text-primary w-10 shrink-0">{o.requiredCount}</span>
+                      <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">{o.reason || "—"}</span>
                       <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => void removeOverride(o.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>

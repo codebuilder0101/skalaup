@@ -203,7 +203,7 @@ export default function ProfilePage() {
                 <Label>{t("skala.profile.currentPassword")}</Label>
                 <Input type="password" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>{t("skala.profile.newPassword")}</Label>
                   <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" />
@@ -224,7 +224,7 @@ export default function ProfilePage() {
             {isFreelancer && (
               <Card className="p-5 space-y-4">
                 <h2 className="font-semibold text-foreground">{t("skala.profile.ficha")}</h2>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label>{t("skala.auth.cpf")}</Label>
                     <Input value={cpf} inputMode="numeric" placeholder="000.000.000-00"

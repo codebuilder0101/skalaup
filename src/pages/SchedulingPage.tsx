@@ -474,22 +474,20 @@ export function MonthCalendar({
   const agg = useMemo(() => aggregateByDay(board), [board]);
   const monthKey = monthAnchor.slice(0, 7);
 
-  // Monday-first grid covering the whole month (§4.1).
+  // Sunday-first grid covering the whole month (pt-BR calendar: DOM…SÁB).
   const cells = useMemo(() => {
     const first = monthRefOf(monthAnchor);
-    const gridStart = mondayOf(first);
+    const firstDow = new Date(`${first}T00:00:00Z`).getUTCDay(); // 0=Sun..6=Sat
+    const gridStart = addDays(first, -firstDow);
     const daysInMonth = Number(endOfMonth(monthAnchor).slice(8, 10));
-    const offset = Math.round(
-      (Date.parse(`${first}T00:00:00Z`) - Date.parse(`${gridStart}T00:00:00Z`)) / 86400000,
-    );
-    const weeks = Math.ceil((offset + daysInMonth) / 7);
+    const weeks = Math.ceil((firstDow + daysInMonth) / 7);
     return Array.from({ length: weeks * 7 }, (_, i) => addDays(gridStart, i));
   }, [monthAnchor]);
 
-  // Localized weekday abbreviations, Monday-first (2024-01-01 was a Monday).
+  // Localized weekday abbreviations, Sunday-first (2023-01-01 was a Sunday).
   const weekdayLabels = useMemo(() => {
     const fmt = new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" });
-    return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(`${addDays("2024-01-01", i)}T00:00:00Z`)));
+    return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(`${addDays("2023-01-01", i)}T00:00:00Z`)));
   }, [lng]);
 
   return (
@@ -516,7 +514,7 @@ export function MonthCalendar({
                 ${isSelected ? "border-primary bg-primary/10" : "border-border/50 hover:bg-accent/40"}
                 ${isToday && !isSelected ? "ring-1 ring-primary/50" : ""}
                 ${inMonth ? "" : "opacity-40"}`}
-              aria-label={`${Number(date.slice(8, 10))} ${weekdayLabels[(dow + 6) % 7]}${a?.hasDemand ? `, ${a.assigned} ${a.deficit > 0 ? `déficit ${a.deficit}` : ""}` : ""}`}
+              aria-label={`${Number(date.slice(8, 10))} ${weekdayLabels[dow]}${a?.hasDemand ? `, ${a.assigned} ${a.deficit > 0 ? `déficit ${a.deficit}` : ""}` : ""}`}
             >
               <span className={`text-xs font-semibold ${isToday ? "text-primary" : weekend ? "text-primary/80" : "text-foreground"}`}>
                 {Number(date.slice(8, 10))}

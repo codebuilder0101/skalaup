@@ -112,11 +112,13 @@ describe("MonthCalendar", () => {
     expect(onSelectDay).toHaveBeenCalledWith("2026-07-11");
   });
 
-  it("renders a Monday-first grid whose cell count is a multiple of 7", () => {
+  it("renders a Sunday-first grid whose cell count is a multiple of 7", () => {
     renderCal();
     const buttons = screen.getAllByRole("button");
     expect(buttons.length % 7).toBe(0);
     // July 2026 starts on a Wednesday → 5 weeks (35 cells) cover it.
     expect(buttons.length).toBe(35);
+    // Sunday-first: the grid begins on the Sunday before July 1 (Jun 28), not Jun 29.
+    expect(buttons[0].getAttribute("aria-label")).toMatch(/^28\b/);
   });
 });

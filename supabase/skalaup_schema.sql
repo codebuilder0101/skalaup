@@ -617,7 +617,8 @@ create table if not exists public.notifications (
                         'bonus_loss_warning','second_no_show','swap_request','availability_cancelled',
                         'coverage_deficit','availability_reminder','schedule_conflict',
                         'weekday_eligibility','manager_checkin_checkout','feedback_received',
-                        'feedback_request','schedule_published','shift_reminder','waitlist_opening')),
+                        'feedback_request','schedule_published','schedule_assigned','schedule_removed',
+                        'shift_reminder','waitlist_opening')),
   title              text not null,
   body               text,
   data               jsonb not null default '{}'::jsonb,  -- deep-link payload
@@ -629,6 +630,7 @@ create index if not exists idx_notifications_recipient on public.notifications(r
 create index if not exists idx_notifications_unread on public.notifications(recipient_user_id) where read_at is null;
 
 -- 'waitlist_opening' (§3.4 vacancy alert) added after the original list shipped.
+-- 'schedule_assigned'/'schedule_removed' (§R14b immediate coordinator-assign notify).
 -- Widen the type check constraint idempotently for existing databases.
 alter table public.notifications drop constraint if exists notifications_type_check;
 alter table public.notifications add constraint notifications_type_check check (type in (
@@ -636,7 +638,8 @@ alter table public.notifications add constraint notifications_type_check check (
   'bonus_loss_warning','second_no_show','swap_request','availability_cancelled',
   'coverage_deficit','availability_reminder','schedule_conflict',
   'weekday_eligibility','manager_checkin_checkout','feedback_received',
-  'feedback_request','schedule_published','shift_reminder','waitlist_opening'));
+  'feedback_request','schedule_published','schedule_assigned','schedule_removed',
+  'shift_reminder','waitlist_opening'));
 
 -- =============================================================================
 -- 23. DEVICE TOKENS (§14) — push to iOS / Android / web

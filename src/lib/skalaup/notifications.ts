@@ -102,6 +102,8 @@ export function notificationLink(n: AppNotification): string | null {
     case "waitlist_opening":
       return "/vagas";
     case "schedule_published":
+    case "schedule_assigned":
+    case "schedule_removed":
     case "shift_reminder":
     case "day_start_reminder":
     case "checkout_reminder":

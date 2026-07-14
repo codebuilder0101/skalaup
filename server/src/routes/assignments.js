@@ -16,6 +16,33 @@ router.use(requireAuth);
 // (a manager may only touch their own restaurant — see canEditRestaurant).
 const requireSchedulers = requireRole("coordinator", "administrator", "restaurant_manager");
 
+const SHIFT_LABEL = { lunch: "Almoço", dinner: "Janta" };
+const dateBR = (iso) => String(iso).slice(0, 10).split("-").reverse().join("/"); // YYYY-MM-DD → DD/MM/YYYY
+const hhmm = (t) => String(t).slice(0, 5);
+
+// Immediately tell a freelancer their escala changed (§R14b — manual coordinator
+// assignments are published on creation, so the shift is already visible). The
+// bell row is written and a web push attempted; failures never break scheduling.
+async function notifyScheduleChange({ userId, type, restaurantId, date, shiftType, startTime, endTime }) {
+  try {
+    const r = await one(`select name from public.restaurants where id = $1`, [restaurantId]);
+    const where = r?.name ?? "restaurante";
+    const shift = SHIFT_LABEL[shiftType] || shiftType;
+    const added = type === "schedule_assigned";
+    await notify({
+      recipientUserId: userId,
+      type,
+      title: added ? "Novo turno na sua escala" : "Turno removido da sua escala",
+      body: added
+        ? `${shift} em ${where} — ${dateBR(date)}, ${hhmm(startTime)}–${hhmm(endTime)}.`
+        : `${shift} em ${where} — ${dateBR(date)} foi removido da sua escala.`,
+      data: { date: String(date).slice(0, 10), shiftType, restaurantId, path: "/my-schedule" },
+    });
+  } catch (e) {
+    console.error(`${type} notify failed:`, e.message);
+  }
+}
+
 const COLS = `id, cycle_id as "cycleId", restaurant_id as "restaurantId",
   user_id as "userId", date::text as date, shift_type as "shiftType",
   start_time as "startTime", end_time as "endTime", status,
@@ -107,11 +134,14 @@ router.post("/", requireSchedulers, async (req, res) => {
       assignedVia = cyc && cyc.status === "published" ? "waiting_list" : "coordinator";
     }
 
+    // Published on creation (§R14b): a manual coordinator/manager assignment is
+    // live immediately, so the freelancer sees it and is notified right away —
+    // no separate publish step. (Bulk auto-generate still creates drafts.)
     const row = await one(
       `insert into public.schedule_assignments
          (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time,
-          status, is_weekend_mandatory, assigned_via, created_by)
-       values ($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9,$10)
+          status, is_weekend_mandatory, assigned_via, created_by, published_at)
+       values ($1,$2,$3,$4,$5,$6,$7,'published',$8,$9,$10, now())
        returning ${COLS}`,
       [
         b.cycleId ?? null, b.restaurantId, b.userId, b.date, b.shiftType,
@@ -119,6 +149,12 @@ router.post("/", requireSchedulers, async (req, res) => {
         assignedVia, req.user.sub,
       ],
     );
+
+    // Immediate notification to the assigned freelancer (bell + best-effort push).
+    await notifyScheduleChange({
+      userId: b.userId, type: "schedule_assigned", restaurantId: b.restaurantId,
+      date: b.date, shiftType: b.shiftType, startTime: times.startTime, endTime: times.endTime,
+    });
 
     // Weekday eligibility (§8.3): weekday shifts (Mon–Thu) require all 4 weekend
     // mandatory shifts of the preceding weekend — warn only, never block.
@@ -159,7 +195,8 @@ router.put("/:id/cancel", requireSchedulers, async (req, res) => {
   try {
     const target = await one(
       `select cycle_id as "cycleId", restaurant_id as "restaurantId", date::text as date,
-              shift_type as "shiftType", status
+              shift_type as "shiftType", status, user_id as "userId",
+              to_char(start_time, 'HH24:MI') as "startTime", to_char(end_time, 'HH24:MI') as "endTime"
          from public.schedule_assignments where id = $1`,
       [req.params.id],
     );
@@ -172,8 +209,14 @@ router.put("/:id/cancel", requireSchedulers, async (req, res) => {
          where id = $1 returning ${COLS}`,
       [req.params.id],
     );
-    // Cancelling a PUBLISHED shift opens a vacancy → alert the waiting list (§3.4).
+    // Cancelling a PUBLISHED (freelancer-visible) shift: tell the affected
+    // freelancer, and open a vacancy → alert the waiting list (§3.4).
     if (target.status === "published") {
+      await notifyScheduleChange({
+        userId: target.userId, type: "schedule_removed", restaurantId: target.restaurantId,
+        date: target.date, shiftType: target.shiftType,
+        startTime: target.startTime, endTime: target.endTime,
+      });
       openVagaForSlot({
         cycleId: target.cycleId, restaurantId: target.restaurantId,
         date: target.date, shiftType: target.shiftType,

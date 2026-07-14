@@ -9,7 +9,7 @@ import type { WeekBoard } from "@/lib/skalaup/scheduling";
 function makeBoard(): WeekBoard {
   const person = (id: string, name: string) => ({
     assignmentId: id, userId: `u-${id}`, name, score: 10, level: 2,
-    isWeekendMandatory: true, assignedVia: "coordinator" as const,
+    status: "draft" as const, isWeekendMandatory: true, assignedVia: "coordinator" as const,
   });
   return {
     weekStart: "2026-07-01", weekEnd: "2026-07-31", cycleId: "c1",

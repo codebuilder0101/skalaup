@@ -18,9 +18,8 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
 } from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/contexts/AuthContext";
 import { CycleControl } from "@/components/CycleControl";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
@@ -316,98 +315,120 @@ function ScheduleCell({
     </button>
   );
 
-  return (
-    <Popover open={open} onOpenChange={canEdit ? setOpen : undefined}>
-      <PopoverTrigger asChild>
-        {variant === "detail" ? detailTrigger : gridTrigger}
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] p-0" align="start">
-        <div className="p-3 border-b border-border">
-          <p className="text-sm font-semibold flex items-center gap-1.5">
-            {shiftType === "lunch" ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
-            {t(`skala.scheduleBuilder.shift.${shiftType}`)}
-            {cell.isWeekendMandatory && (
-              <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px]">{t("skala.scheduleBuilder.bonusShift")}</Badge>
-            )}
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">{formatDateBR(cell.date)}</p>
-          {slotList.length > 1 ? (
-            <div className="space-y-1 mt-2">
-              <Label className="text-[11px]">{t("skala.scheduleBuilder.slot")}</Label>
-              <Select value={String(Math.min(slotIdx, slotList.length - 1))} onValueChange={(v) => setSlotIdx(Number(v))}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {slotList.map((s, idx) => (
-                    <SelectItem key={idx} value={String(idx)}>{slotText(s)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground mt-1">{slotText(slot)}</p>
+  // Shared panel: slot header + assigned list + waiting list + "assign anyone".
+  // Rendered inside a Popover on the desktop grid, or a bottom Sheet on touch/mobile.
+  const panelBody = (
+    <>
+      <div className="p-3 border-b border-border">
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          {shiftType === "lunch" ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
+          {t(`skala.scheduleBuilder.shift.${shiftType}`)}
+          {cell.isWeekendMandatory && (
+            <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px]">{t("skala.scheduleBuilder.bonusShift")}</Badge>
           )}
-        </div>
-
-        {/* Assigned */}
-        {cell.assigned.length > 0 && (
-          <div className="p-3 border-b border-border space-y-1">
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-              {t("skala.scheduleBuilder.assignedList")} ({cell.assigned.length})
-            </p>
-            {cell.assigned.map((a) => (
-              <div key={a.assignmentId} className="flex items-center justify-between gap-2">
-                <span className="text-sm flex items-center gap-1.5 truncate">
-                  {a.name} <Stars level={a.level} />
-                  <span className="text-[10px] text-muted-foreground">{Number(a.score).toFixed(1)}</span>
-                </span>
-                <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive"
-                  onClick={() => void remove(a.assignmentId)} disabled={working}>
-                  <X className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            ))}
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">{formatDateBR(cell.date)}</p>
+        {slotList.length > 1 ? (
+          <div className="space-y-1 mt-2">
+            <Label className="text-[11px]">{t("skala.scheduleBuilder.slot")}</Label>
+            <Select value={String(Math.min(slotIdx, slotList.length - 1))} onValueChange={(v) => setSlotIdx(Number(v))}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {slotList.map((s, idx) => (
+                  <SelectItem key={idx} value={String(idx)}>{slotText(s)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+        ) : (
+          <p className="text-xs text-muted-foreground mt-1">{slotText(slot)}</p>
+        )}
+      </div>
+
+      {/* Assigned */}
+      {cell.assigned.length > 0 && (
+        <div className="p-3 border-b border-border space-y-1">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+            {t("skala.scheduleBuilder.assignedList")} ({cell.assigned.length})
+          </p>
+          {cell.assigned.map((a) => (
+            <div key={a.assignmentId} className="flex items-center justify-between gap-2">
+              <span className="text-sm flex items-center gap-1.5 truncate">
+                {a.name} <Stars level={a.level} />
+                <span className="text-[10px] text-muted-foreground">{Number(a.score).toFixed(1)}</span>
+              </span>
+              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0"
+                onClick={() => void remove(a.assignmentId)} disabled={working}>
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Candidates */}
+      <div className={`p-3 space-y-1 overflow-y-auto ${variant === "detail" ? "" : "max-h-64"}`}>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+          {t("skala.scheduleBuilder.waitingList")} ({candidates.length})
+        </p>
+        {!cycleId ? (
+          <p className="text-xs text-muted-foreground">{t("skala.scheduleBuilder.noCycle")}</p>
+        ) : loadingCand ? (
+          <p className="text-xs text-muted-foreground">{t("skala.common.loading")}</p>
+        ) : candidates.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t("skala.scheduleBuilder.noCandidates")}</p>
+        ) : (
+          candidates.map(renderRow)
         )}
 
-        {/* Candidates */}
-        <div className="p-3 space-y-1 max-h-64 overflow-y-auto">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-            {t("skala.scheduleBuilder.waitingList")} ({candidates.length})
-          </p>
-          {!cycleId ? (
-            <p className="text-xs text-muted-foreground">{t("skala.scheduleBuilder.noCycle")}</p>
-          ) : loadingCand ? (
-            <p className="text-xs text-muted-foreground">{t("skala.common.loading")}</p>
-          ) : candidates.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t("skala.scheduleBuilder.noCandidates")}</p>
-          ) : (
-            candidates.map(renderRow)
-          )}
+        {/* Fallback (§3.3): staff a slot from ALL members when availability is thin. */}
+        {canEdit && (
+          <div className="pt-2 mt-1 border-t border-border">
+            <button type="button" onClick={() => void toggleShowAll()}
+              className="text-xs text-primary hover:underline">
+              {showAll ? t("skala.scheduleBuilder.hideAllMembers") : t("skala.scheduleBuilder.assignAnyone")}
+            </button>
+            {showAll && (
+              <div className="mt-1.5 space-y-1">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                  {t("skala.scheduleBuilder.allMembers")} ({allMembers.length})
+                </p>
+                {loadingAll ? (
+                  <p className="text-xs text-muted-foreground">{t("skala.common.loading")}</p>
+                ) : allMembers.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{t("skala.scheduleBuilder.noMembers")}</p>
+                ) : (
+                  allMembers.map(renderRow)
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  );
 
-          {/* Fallback (§3.3): staff a slot from ALL members when availability is thin. */}
-          {canEdit && (
-            <div className="pt-2 mt-1 border-t border-border">
-              <button type="button" onClick={() => void toggleShowAll()}
-                className="text-xs text-primary hover:underline">
-                {showAll ? t("skala.scheduleBuilder.hideAllMembers") : t("skala.scheduleBuilder.assignAnyone")}
-              </button>
-              {showAll && (
-                <div className="mt-1.5 space-y-1">
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-                    {t("skala.scheduleBuilder.allMembers")} ({allMembers.length})
-                  </p>
-                  {loadingAll ? (
-                    <p className="text-xs text-muted-foreground">{t("skala.common.loading")}</p>
-                  ) : allMembers.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">{t("skala.scheduleBuilder.noMembers")}</p>
-                  ) : (
-                    allMembers.map(renderRow)
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+  // Touch/compact layout: the panel is a full-width bottom sheet (§ "Add
+  // Schedule" must not break on small screens). Desktop grid keeps the popover.
+  if (variant === "detail") {
+    return (
+      <Sheet open={open} onOpenChange={canEdit ? setOpen : undefined}>
+        <SheetTrigger asChild>{detailTrigger}</SheetTrigger>
+        <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto p-0 rounded-t-2xl">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{t(`skala.scheduleBuilder.shift.${shiftType}`)} · {formatDateBR(cell.date)}</SheetTitle>
+          </SheetHeader>
+          {panelBody}
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  return (
+    <Popover open={open} onOpenChange={canEdit ? setOpen : undefined}>
+      <PopoverTrigger asChild>{gridTrigger}</PopoverTrigger>
+      <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] p-0" align="start">
+        {panelBody}
       </PopoverContent>
     </Popover>
   );
@@ -512,11 +533,33 @@ export function MonthCalendar({
   );
 }
 
+// Compact layout = phones / tablets / touch emulators. We key off touch
+// (pointer: coarse) so it triggers regardless of the device's reported CSS
+// width — an emulator or tablet can report >768px yet still be a touch device
+// where the wide grid is unusable — plus any genuinely narrow window. A real
+// desktop (mouse, ≥1024px) keeps the grid.
+function useIsCompact() {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const narrow = window.matchMedia("(max-width: 1023px)");
+    const update = () => setCompact(coarse.matches || narrow.matches);
+    update();
+    coarse.addEventListener("change", update);
+    narrow.addEventListener("change", update);
+    return () => {
+      coarse.removeEventListener("change", update);
+      narrow.removeEventListener("change", update);
+    };
+  }, []);
+  return compact;
+}
+
 export default function SchedulingPage() {
   const { t, i18n } = useTranslation();
   useAuth();
   const lng = i18n.language || "pt-BR";
-  const isMobile = useIsMobile();
+  const isCompact = useIsCompact();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [restaurantFilter, setRestaurantFilter] = useState<string>("all");
@@ -548,7 +591,7 @@ export default function SchedulingPage() {
   // The visible date range, derived from the view mode (§R2: week / month / custom).
   // On mobile the scheduling UI is always a month calendar, so force a month range.
   const range = useMemo<{ start: string; end: string } | null>(() => {
-    if (isMobile) return { start: monthRefOf(anchor), end: endOfMonth(anchor) };
+    if (isCompact) return { start: monthRefOf(anchor), end: endOfMonth(anchor) };
     if (viewMode === "month") return { start: monthRefOf(anchor), end: endOfMonth(anchor) };
     if (viewMode === "custom") {
       if (!customStart || !customEnd) return null;
@@ -558,7 +601,7 @@ export default function SchedulingPage() {
     }
     const start = mondayOf(anchor);
     return { start, end: addDays(start, 6) };
-  }, [isMobile, viewMode, anchor, customStart, customEnd]);
+  }, [isCompact, viewMode, anchor, customStart, customEnd]);
 
   const loadBoard = useCallback(async () => {
     if (!range) { setBoard(null); setCycle(null); return; }
@@ -593,42 +636,45 @@ export default function SchedulingPage() {
   const canEdit = !!cycle && !published;
   const today = todayIso();
 
-  // Day-detail data for the mobile calendar: the selected date's shifts →
+  // The day shown in the compact day view — defaults to today until the user
+  // taps another date on the calendar.
+  const activeDay = selectedDay ?? today;
+
+  // Day-detail data for the compact calendar: the active date's shifts →
   // restaurants (only those with demand or assignments), reusing the loaded board.
   const daySections = useMemo(() => {
-    if (!selectedDay || !board) return [];
+    if (!board) return [];
     return board.shifts
       .map((sg) => ({
         shiftType: sg.shiftType,
         rows: sg.restaurants
-          .map((row) => ({ row, cell: row.cells.find((c) => c.date === selectedDay) }))
+          .map((row) => ({ row, cell: row.cells.find((c) => c.date === activeDay) }))
           .filter((x): x is { row: typeof x.row; cell: WeekCell } =>
             !!x.cell && (x.cell.required > 0 || x.cell.assignedCount > 0)),
       }))
       .filter((s) => s.rows.length > 0);
-  }, [selectedDay, board]);
+  }, [activeDay, board]);
 
   const dayIsWeekendBonus = daySections.some((s) => s.rows.some((r) => r.cell.isWeekendMandatory));
 
-  const shiftSelectedDay = (delta: number) => {
-    if (!selectedDay) return;
-    const next = addDays(selectedDay, delta);
-    if (next.slice(0, 7) !== anchor.slice(0, 7)) setAnchor(next);
-    setSelectedDay(next);
+  const selectDay = (date: string) => {
+    if (date.slice(0, 7) !== anchor.slice(0, 7)) setAnchor(date);
+    setSelectedDay(date);
   };
+  const shiftSelectedDay = (delta: number) => selectDay(addDays(activeDay, delta));
 
   const rangeLabel = useMemo(() => {
     if (!range) return "—";
-    if (isMobile || viewMode === "month") {
+    if (isCompact || viewMode === "month") {
       return new Intl.DateTimeFormat(lng, { month: "long", year: "numeric", timeZone: "UTC" })
         .format(new Date(`${range.start}T00:00:00Z`));
     }
     const f = (d: string, o: Intl.DateTimeFormatOptions) =>
       new Intl.DateTimeFormat(lng, { ...o, timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
     return `${f(range.start, { month: "short", day: "numeric" })} – ${f(range.end, { month: "short", day: "numeric", year: "numeric" })}`;
-  }, [range, isMobile, viewMode, lng]);
+  }, [range, isCompact, viewMode, lng]);
 
-  const stepMonth = isMobile || viewMode === "month";
+  const stepMonth = isCompact || viewMode === "month";
   const goPrev = () => setAnchor(stepMonth ? addMonths(anchor, -1) : addDays(anchor, -7));
   const goNext = () => setAnchor(stepMonth ? addMonths(anchor, 1) : addDays(anchor, 7));
   const goToday = () => {
@@ -714,22 +760,24 @@ export default function SchedulingPage() {
 
             {/* View switch + period navigation + actions */}
             <div className="flex flex-wrap items-center gap-2.5 xl:shrink-0">
-              {/* View-mode switch (week / month / custom) — desktop only; mobile is always the month calendar */}
-              <div className="hidden sm:flex items-center rounded-xl border border-border/70 bg-card/70 p-1 shadow-sm backdrop-blur">
-                {(["week", "month", "custom"] as ViewMode[]).map((m) => (
-                  <Button
-                    key={m}
-                    variant={viewMode === m ? "default" : "ghost"}
-                    size="sm" className="h-8 rounded-lg px-3 text-xs"
-                    onClick={() => setViewMode(m)}
-                  >
-                    {t(`skala.scheduleBuilder.view.${m}`)}
-                  </Button>
-                ))}
-              </div>
+              {/* View-mode switch (week / month / custom) — desktop only; compact is always the day calendar */}
+              {!isCompact && (
+                <div className="flex items-center rounded-xl border border-border/70 bg-card/70 p-1 shadow-sm backdrop-blur">
+                  {(["week", "month", "custom"] as ViewMode[]).map((m) => (
+                    <Button
+                      key={m}
+                      variant={viewMode === m ? "default" : "ghost"}
+                      size="sm" className="h-8 rounded-lg px-3 text-xs"
+                      onClick={() => setViewMode(m)}
+                    >
+                      {t(`skala.scheduleBuilder.view.${m}`)}
+                    </Button>
+                  ))}
+                </div>
+              )}
 
               {/* Period navigator (week/month) or custom date range */}
-              {!isMobile && viewMode === "custom" ? (
+              {!isCompact && viewMode === "custom" ? (
                 <div className="flex items-center gap-1.5 rounded-xl border border-border/70 bg-card/70 p-1.5 shadow-sm backdrop-blur">
                   <Input
                     type="date" value={customStart} max={customEnd || undefined}
@@ -819,21 +867,89 @@ export default function SchedulingPage() {
           </div>
         </Card>
 
-        {/* Board — mobile month calendar / desktop grid */}
-        {isMobile ? (
-          <div className="space-y-2">
+        {/* Board — compact calendar + inline day detail / desktop grid */}
+        {isCompact ? (
+          <div className="space-y-3">
             {loading && <p className="text-xs text-muted-foreground">{t("skala.common.loading")}</p>}
             <MonthCalendar
               monthAnchor={anchor}
               board={board}
               today={today}
               lng={lng}
-              selectedDay={selectedDay}
-              onSelectDay={(date) => {
-                if (date.slice(0, 7) !== anchor.slice(0, 7)) setAnchor(date);
-                setSelectedDay(date);
-              }}
+              selectedDay={activeDay}
+              onSelectDay={selectDay}
             />
+
+            {/* Day detail (§5) — the tapped date's schedule, inline below the calendar */}
+            <Card className="p-3 space-y-4">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => shiftSelectedDay(-1)} aria-label="Previous day">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex-1 min-w-0 text-center">
+                  <span className="capitalize text-sm font-semibold">{formatDateBR(activeDay)}</span>
+                  {dayIsWeekendBonus && (
+                    <Badge variant="outline" className="ml-2 text-amber-600 border-amber-300 text-[10px]">
+                      {t("skala.scheduleBuilder.bonusShift")}
+                    </Badge>
+                  )}
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => shiftSelectedDay(1)} aria-label="Next day">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {loading ? (
+                <p className="text-sm text-muted-foreground">{t("skala.common.loading")}</p>
+              ) : daySections.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">{t("skala.scheduleBuilder.noDemand")}</p>
+              ) : (
+                daySections.map((s) => (
+                  <div key={s.shiftType} className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                      {s.shiftType === "lunch"
+                        ? <Sun className="w-4 h-4 text-amber-500" />
+                        : <Moon className="w-4 h-4 text-indigo-500" />}
+                      {t(`skala.scheduleBuilder.shift.${s.shiftType}`)}
+                      <span className="text-muted-foreground font-normal text-xs">
+                        {s.rows[0]?.row.startTime.slice(0, 5)}–{s.rows[0]?.row.endTime.slice(0, 5)}
+                      </span>
+                    </div>
+                    {s.rows.map(({ row, cell }) => {
+                      const mayEditRow = scope.canEditAll || scope.ids.has(row.restaurantId);
+                      const rowCanEdit = canEdit && mayEditRow;
+                      const readOnlyForManager = canEdit && !mayEditRow;
+                      return (
+                        <div key={row.restaurantId} className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <span className="truncate">{row.restaurantName}</span>
+                            {readOnlyForManager && (
+                              <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
+                                {t("skala.scheduleBuilder.readOnly")}
+                              </span>
+                            )}
+                          </div>
+                          <ScheduleCell
+                            variant="detail"
+                            cell={cell}
+                            restaurantId={row.restaurantId}
+                            shiftType={s.shiftType}
+                            startTime={row.startTime}
+                            endTime={row.endTime}
+                            slots={row.slots}
+                            cycleId={board?.cycleId ?? null}
+                            isToday={cell.date === today}
+                            busyUserIds={busyByDateShift.get(`${cell.date}|${s.shiftType}`) ?? new Set()}
+                            canEdit={rowCanEdit}
+                            onChanged={loadBoard}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
+            </Card>
           </div>
         ) : loading ? (
           <p className="text-sm text-muted-foreground">{t("skala.common.loading")}</p>
@@ -913,80 +1029,6 @@ export default function SchedulingPage() {
           </Card>
         )}
 
-        {/* Mobile day detail (§5) — tap a calendar day to assign/manage that date */}
-        <Sheet open={isMobile && !!selectedDay} onOpenChange={(o) => { if (!o) setSelectedDay(null); }}>
-          <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl px-4 pb-6">
-            <SheetHeader className="text-left">
-              <SheetTitle className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-8 w-8 -ml-2" onClick={() => shiftSelectedDay(-1)} aria-label="Previous day">
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="capitalize text-base">{selectedDay ? formatDateBR(selectedDay) : ""}</span>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftSelectedDay(1)} aria-label="Next day">
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                {dayIsWeekendBonus && (
-                  <Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px]">
-                    {t("skala.scheduleBuilder.bonusShift")}
-                  </Badge>
-                )}
-              </SheetTitle>
-            </SheetHeader>
-
-            <div className="mt-3 space-y-4">
-              {loading ? (
-                <p className="text-sm text-muted-foreground">{t("skala.common.loading")}</p>
-              ) : daySections.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">{t("skala.scheduleBuilder.noDemand")}</p>
-              ) : (
-                daySections.map((s) => (
-                  <div key={s.shiftType} className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                      {s.shiftType === "lunch"
-                        ? <Sun className="w-4 h-4 text-amber-500" />
-                        : <Moon className="w-4 h-4 text-indigo-500" />}
-                      {t(`skala.scheduleBuilder.shift.${s.shiftType}`)}
-                      <span className="text-muted-foreground font-normal text-xs">
-                        {s.rows[0]?.row.startTime.slice(0, 5)}–{s.rows[0]?.row.endTime.slice(0, 5)}
-                      </span>
-                    </div>
-                    {s.rows.map(({ row, cell }) => {
-                      const mayEditRow = scope.canEditAll || scope.ids.has(row.restaurantId);
-                      const rowCanEdit = canEdit && mayEditRow;
-                      const readOnlyForManager = canEdit && !mayEditRow;
-                      return (
-                        <div key={row.restaurantId} className="space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                            <span className="truncate">{row.restaurantName}</span>
-                            {readOnlyForManager && (
-                              <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
-                                {t("skala.scheduleBuilder.readOnly")}
-                              </span>
-                            )}
-                          </div>
-                          <ScheduleCell
-                            variant="detail"
-                            cell={cell}
-                            restaurantId={row.restaurantId}
-                            shiftType={s.shiftType}
-                            startTime={row.startTime}
-                            endTime={row.endTime}
-                            slots={row.slots}
-                            cycleId={board?.cycleId ?? null}
-                            isToday={cell.date === today}
-                            busyUserIds={busyByDateShift.get(`${cell.date}|${s.shiftType}`) ?? new Set()}
-                            canEdit={rowCanEdit}
-                            onChanged={loadBoard}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </div>
-          </SheetContent>
-        </Sheet>
       </div>
     </AppLayout>
   );

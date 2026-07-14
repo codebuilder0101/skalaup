@@ -1865,8 +1865,12 @@
       "subtitle": "Your published shifts and Google Calendar export.",
       "upcoming": "Upcoming shifts",
       "emptyUpcoming": "You don't have any published shifts yet.",
+      "emptyDay": "No shifts on this day.",
       "past": "Past shifts",
       "bonusShift": "Bonus",
+      "today": "Today",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
       "unknownRestaurant": "Restaurant"
     },
     "performance": {

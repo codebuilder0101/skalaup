@@ -1865,8 +1865,12 @@
       "subtitle": "Seus turnos publicados e exportação para o Google Agenda.",
       "upcoming": "Próximos turnos",
       "emptyUpcoming": "Você ainda não tem turnos publicados.",
+      "emptyDay": "Nenhum plantão neste dia.",
       "past": "Turnos anteriores",
       "bonusShift": "Bônus",
+      "today": "Hoje",
+      "prevMonth": "Mês anterior",
+      "nextMonth": "Próximo mês",
       "unknownRestaurant": "Restaurante"
     },
     "performance": {

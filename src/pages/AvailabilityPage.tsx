@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MonthCalendarGrid, type DayMark } from "@/components/calendar/MonthCalendarGrid";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   listCycles, listMyAvailability, bulkSubmitAvailability, listMyClients, listVacancies,
@@ -30,6 +31,20 @@ function daysOfMonth(referenceMonth: string): string[] {
   return Array.from({ length: count }, (_, i) => `${ym}-${String(i + 1).padStart(2, "0")}`);
 }
 
+// Aggregate the freelancer's draft picks into per-day markers for the grid.
+export function markDraft(draft: Map<string, DesiredSlot>): Map<string, DayMark> {
+  const m = new Map<string, DayMark>();
+  for (const s of draft.values()) {
+    const k = dateKey(s.date);
+    const cur = m.get(k) ?? { lunch: false, dinner: false, count: 0 };
+    if (s.shiftType === "lunch") cur.lunch = true;
+    else cur.dinner = true;
+    cur.count = (cur.count ?? 0) + 1;
+    m.set(k, cur);
+  }
+  return m;
+}
+
 export default function AvailabilityPage() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
@@ -42,6 +57,7 @@ export default function AvailabilityPage() {
   // they press "Enviar minha disponibilidade" (§ batch submit).
   const [draft, setDraft] = useState<Map<string, DesiredSlot>>(new Map());
   const [serverSet, setServerSet] = useState<Set<string>>(new Set()); // what's persisted
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -88,6 +104,16 @@ export default function AvailabilityPage() {
   const days = useMemo(() => (cycle ? daysOfMonth(cycle.referenceMonth) : []), [cycle]);
   const today = new Date().toISOString().slice(0, 10);
   const selectedCount = draft.size;
+  const marks = useMemo(() => markDraft(draft), [draft]);
+
+  // Default the selected day to today (if it falls in the cycle month) else day 1.
+  useEffect(() => {
+    if (!cycle) { setSelectedDay(null); return; }
+    setSelectedDay((prev) => {
+      if (prev && prev.slice(0, 7) === cycle.referenceMonth.slice(0, 7)) return prev;
+      return today.slice(0, 7) === cycle.referenceMonth.slice(0, 7) ? today : days[0] ?? null;
+    });
+  }, [cycle, days, today]);
 
   // Unsaved changes: draft differs from the persisted snapshot.
   const dirty = useMemo(() => {
@@ -102,14 +128,11 @@ export default function AvailabilityPage() {
     return new Intl.DateTimeFormat(lng, { month: "long", year: "numeric", timeZone: "UTC" }).format(d);
   }, [cycle, lng]);
 
-  const dayLabel = (date: string) => {
-    const d = new Date(`${date}T00:00:00Z`);
-    return {
-      wd: new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" }).format(d),
-      n: Number(date.slice(8, 10)),
-      weekend: [0, 5, 6].includes(d.getUTCDay()), // Fri/Sat/Sun — the most-wanted shifts
-    };
-  };
+  const selectedLabel = useMemo(() => {
+    if (!selectedDay) return "";
+    return new Intl.DateTimeFormat(lng, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })
+      .format(new Date(`${selectedDay}T00:00:00Z`));
+  }, [selectedDay, lng]);
 
   // Toggle a slot in the LOCAL draft only. Enforces the any/specific exclusion:
   // picking "any restaurant" clears specific picks for that slot and vice-versa.
@@ -156,9 +179,73 @@ export default function AvailabilityPage() {
     toast.success(t("skala.availability.submitted", { count: m.size }));
   };
 
+  // The per-shift picker for a single day (rendered in the day-detail panel).
+  const renderShiftPicker = (date: string) => (
+    <div className="space-y-3">
+      {SHIFTS.map((shift) => {
+        const anyOn = draft.has(slotKey(date, shift, null));
+        const specificOn = clients.some((r) => draft.has(slotKey(date, shift, r.id)));
+        return (
+          <div key={shift} className="flex flex-col gap-1.5">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              {shift === "lunch"
+                ? <Sun className="h-3.5 w-3.5 text-amber-500" />
+                : <Moon className="h-3.5 w-3.5 text-indigo-500" />}
+              {t(`skala.scheduleBuilder.shift.${shift}`)}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {/* Any restaurant / no preference */}
+              <button
+                type="button"
+                disabled={!editable || (specificOn && !anyOn)}
+                onClick={() => toggle(date, shift, null)}
+                title={t("skala.availability.anyHint")}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors
+                  ${anyOn
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"}
+                  ${(!editable || (specificOn && !anyOn)) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <Star className="h-3 w-3" />
+                {t("skala.availability.anyRestaurant")}
+              </button>
+              {/* Specific restaurants (his clients) with vacancy counts */}
+              {clients.map((r) => {
+                const key = slotKey(date, shift, r.id);
+                const on = draft.has(key);
+                const vac = vacancies.get(vacKey(date, shift, r.id)) ?? 0;
+                const disabled = !editable || (anyOn && !on);
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => toggle(date, shift, r.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors
+                      ${on
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground"}
+                      ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                  >
+                    <span>{r.name}</span>
+                    {vac > 0 && (
+                      <span className={`rounded-full px-1.5 text-[10px] leading-4 ${on ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground"}`}>
+                        {t("skala.availability.vacancies", { count: vac })}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <AppLayout>
-      <div className="p-6 max-w-5xl mx-auto space-y-5">
+      <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5">
         {/* Header */}
         <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-primary/[0.07] via-card to-card shadow-sm">
           <div className="pointer-events-none absolute -top-20 -right-12 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
@@ -228,83 +315,30 @@ export default function AvailabilityPage() {
         ) : clients.length === 0 ? (
           <Card className="p-10 text-center text-muted-foreground">{t("skala.availability.noRestaurants")}</Card>
         ) : (
-          <div className="space-y-2.5">
-            {days.map((date) => {
-              const dl = dayLabel(date);
-              const isToday = date === today;
-              return (
-                <Card key={date} className={`p-3 sm:p-4 ${isToday ? "ring-1 ring-primary/40" : ""}`}>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                    {/* Day label */}
-                    <div className={`flex sm:w-20 shrink-0 items-center gap-2 sm:flex-col sm:items-start ${dl.weekend ? "text-primary" : "text-foreground"}`}>
-                      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{dl.wd}</span>
-                      <span className="text-lg font-bold leading-none">{dl.n}</span>
-                    </div>
-                    {/* Shifts */}
-                    <div className="flex-1 space-y-2.5">
-                      {SHIFTS.map((shift) => {
-                        const anyOn = draft.has(slotKey(date, shift, null));
-                        const specificOn = clients.some((r) => draft.has(slotKey(date, shift, r.id)));
-                        return (
-                          <div key={shift} className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-                            <span className="flex w-24 shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                              {shift === "lunch"
-                                ? <Sun className="h-3.5 w-3.5 text-amber-500" />
-                                : <Moon className="h-3.5 w-3.5 text-indigo-500" />}
-                              {t(`skala.scheduleBuilder.shift.${shift}`)}
-                            </span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {/* Any restaurant / no preference */}
-                              <button
-                                type="button"
-                                disabled={!editable || (specificOn && !anyOn)}
-                                onClick={() => toggle(date, shift, null)}
-                                title={t("skala.availability.anyHint")}
-                                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors
-                                  ${anyOn
-                                    ? "border-primary bg-primary text-primary-foreground"
-                                    : "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"}
-                                  ${(!editable || (specificOn && !anyOn)) ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                              >
-                                <Star className="h-3 w-3" />
-                                {t("skala.availability.anyRestaurant")}
-                              </button>
-                              {/* Specific restaurants (his clients) with vacancy counts */}
-                              {clients.map((r) => {
-                                const key = slotKey(date, shift, r.id);
-                                const on = draft.has(key);
-                                const vac = vacancies.get(vacKey(date, shift, r.id)) ?? 0;
-                                const disabled = !editable || (anyOn && !on);
-                                return (
-                                  <button
-                                    key={r.id}
-                                    type="button"
-                                    disabled={disabled}
-                                    onClick={() => toggle(date, shift, r.id)}
-                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors
-                                      ${on
-                                        ? "border-primary bg-primary text-primary-foreground"
-                                        : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground"}
-                                      ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                                  >
-                                    <span>{r.name}</span>
-                                    {vac > 0 && (
-                                      <span className={`rounded-full px-1.5 text-[10px] leading-4 ${on ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground"}`}>
-                                        {t("skala.availability.vacancies", { count: vac })}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
+          <div className="space-y-4">
+            {/* Month calendar of the cycle's reference month */}
+            <MonthCalendarGrid
+              month={`${cycle.referenceMonth.slice(0, 7)}-01`}
+              marks={marks}
+              selectedDate={selectedDay}
+              today={today}
+              lng={lng}
+              onSelectDay={setSelectedDay}
+            />
+
+            {/* Legend */}
+            <div className="flex items-center gap-4 text-xs text-muted-foreground px-1">
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500" />{t("skala.scheduleBuilder.shift.lunch")}</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-indigo-500" />{t("skala.scheduleBuilder.shift.dinner")}</span>
+            </div>
+
+            {/* Selected-day picker */}
+            {selectedDay && (
+              <Card className="p-4 sm:p-5">
+                <h2 className="font-semibold text-foreground mb-3 capitalize">{selectedLabel}</h2>
+                {renderShiftPicker(selectedDay)}
+              </Card>
+            )}
           </div>
         )}
 

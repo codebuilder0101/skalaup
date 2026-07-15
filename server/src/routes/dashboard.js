@@ -54,6 +54,43 @@ async function coordinatorDashboard(role) {
     `select count(*)::int as pending from public.users where status = 'pending'`,
   );
 
+  // Extra shifts (R18): pending requests need coordinator action now; the
+  // month breakdown counts requests whose shift date falls in the current month.
+  const extraRow = await one(
+    `select count(*) filter (where status = 'pending')::int as pending,
+            count(*) filter (where date_trunc('month', date) = date_trunc('month', current_date))::int as "monthRequested",
+            count(*) filter (where status = 'assigned'
+                              and date_trunc('month', date) = date_trunc('month', current_date))::int as "monthAssigned",
+            count(*) filter (where status = 'opened'
+                              and date_trunc('month', date) = date_trunc('month', current_date))::int as "monthOpen"
+       from public.extra_shift_requests`,
+  );
+
+  // Availability trend (R19): distinct submitters in the latest cycle vs the
+  // previous one. `cycleCount` disambiguates "prior cycle had 0 subscribers"
+  // from "there is no prior cycle" (in which case there is nothing to compare).
+  const availRow = await one(
+    `with recent as (
+       select id, reference_month
+         from public.availability_cycles
+        order by reference_month desc
+        limit 2
+     )
+     select
+       coalesce((select count(distinct s.user_id)::int from public.availability_submissions s
+                  where s.status = 'submitted'
+                    and s.cycle_id = (select id from recent order by reference_month desc limit 1)), 0) as current,
+       coalesce((select count(distinct s.user_id)::int from public.availability_submissions s
+                  where s.status = 'submitted'
+                    and s.cycle_id = (select id from recent order by reference_month desc offset 1 limit 1)), 0) as "previousRaw",
+       (select count(*)::int from recent) as "cycleCount"`,
+  );
+  const hasPrev = availRow.cycleCount >= 2;
+  const availPrevious = hasPrev ? availRow.previousRaw : null;
+  const availPctChange = availPrevious && availPrevious > 0
+    ? Math.round(((availRow.current - availPrevious) / availPrevious) * 1000) / 10
+    : null;
+
   const finance = await one(
     `select count(*)::int as shifts,
             coalesce(sum(coalesce(a.pay_rate_applied, r.base_pay_per_shift, ${GLOBAL_BASE_PAY})), 0)::float as estimated,
@@ -120,6 +157,17 @@ async function coordinatorDashboard(role) {
     swaps: swaps.pending,
     feedback: feedback.pending,
     approvals: approvals.pending,
+    extraShifts: {
+      pending: extraRow.pending,
+      monthRequested: extraRow.monthRequested,
+      monthAssigned: extraRow.monthAssigned,
+      monthOpen: extraRow.monthOpen,
+    },
+    availability: {
+      current: availRow.current,
+      previous: availPrevious,
+      pctChange: availPctChange,
+    },
     finance,
     todaySchedule,
     shiftsTrend,

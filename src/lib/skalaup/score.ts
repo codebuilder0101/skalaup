@@ -13,6 +13,8 @@ export async function addScoreEvent(params: {
   userId: string; eventType: ScoreEventType; occurredOn: string;
   points?: number; referenceType?: ScoreEvent["referenceType"]; referenceId?: string | null;
   createdBy?: string | null; notes?: string | null;
+  // R15: apply a coordinator-defined custom criterion (server uses its point value).
+  criterionId?: string;
 }): Promise<Result<ScoreEvent | null>> {
   return wrap(api.post<ScoreEvent>("/score/events", params), null);
 }

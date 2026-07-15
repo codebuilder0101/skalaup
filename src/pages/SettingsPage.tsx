@@ -2,18 +2,19 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Settings, Globe, Star, Loader2, Save, Bell, BellOff } from "lucide-react";
+import { Settings, Globe, Star, Loader2, Save, Bell, BellOff, Plus, Trash2, SlidersHorizontal } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   SUPPORTED_LANGUAGES, setStoredLanguage, type SupportedLanguage,
 } from "@/i18n/config";
-import { getScoreSettings, saveScoreSettings, type ScoreSettings } from "@/lib/skalaup/settings";
+import { getScoreSettings, saveScoreSettings, type ScoreSettings, type CustomCriterion } from "@/lib/skalaup/settings";
 import { pushSupported, pushPermission, isPushSubscribed, enablePush, disablePush } from "@/lib/skalaup/push";
 
 // Enable/disable web push on this device (R13).
@@ -105,6 +106,18 @@ function ScoreConfigCard() {
       return { ...c, starCutoffs: next };
     });
 
+  // Custom criteria (R15) — coordinator-defined manual scoring rules.
+  const newId = () =>
+    (typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `c_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  const addCriterion = () =>
+    setCfg((c) => (c ? { ...c, customCriteria: [...c.customCriteria, { id: newId(), label: "", points: 0, active: true }] } : c));
+  const updateCriterion = (id: string, patch: Partial<CustomCriterion>) =>
+    setCfg((c) => (c ? { ...c, customCriteria: c.customCriteria.map((x) => (x.id === id ? { ...x, ...patch } : x)) } : c));
+  const removeCriterion = (id: string) =>
+    setCfg((c) => (c ? { ...c, customCriteria: c.customCriteria.filter((x) => x.id !== id) } : c));
+
   const save = async () => {
     if (!cfg) return;
     // Guard: cutoffs must be strictly ascending (server enforces too, but fail fast).
@@ -114,8 +127,12 @@ function ScoreConfigCard() {
         return;
       }
     }
+    // Drop blank-label criteria so the user isn't surprised by silent server pruning.
+    const cleanedCriteria = cfg.customCriteria
+      .map((x) => ({ ...x, label: x.label.trim() }))
+      .filter((x) => x.label.length > 0);
     setSaving(true);
-    const { data, error } = await saveScoreSettings(cfg);
+    const { data, error } = await saveScoreSettings({ ...cfg, customCriteria: cleanedCriteria });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     if (data) setCfg(data);
@@ -182,6 +199,58 @@ function ScoreConfigCard() {
           <Input type="number" min={0} className="w-24" value={cfg.swapScoringCap}
             onChange={(e) => setCfg((c) => (c ? { ...c, swapScoringCap: Number(e.target.value) || 0 } : c))} />
         </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-foreground">{t("skala.settings.score.manualCap")}</span>
+          <Input type="number" min={0} className="w-24" value={cfg.manualScoreMonthlyCap}
+            onChange={(e) => setCfg((c) => (c ? { ...c, manualScoreMonthlyCap: Number(e.target.value) || 0 } : c))} />
+        </div>
+      </div>
+
+      {/* Custom criteria (R15) — freely-defined manual scoring rules. */}
+      <div className="border-t pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label className="text-sm font-medium flex items-center gap-1.5">
+              <SlidersHorizontal className="w-3.5 h-3.5" />{t("skala.settings.score.customTitle")}
+            </Label>
+            <p className="text-xs text-muted-foreground mt-1">{t("skala.settings.score.customHint")}</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={addCriterion}>
+            <Plus className="w-3.5 h-3.5 mr-1" />{t("skala.settings.score.customAdd")}
+          </Button>
+        </div>
+        {cfg.customCriteria.length === 0 ? (
+          <p className="text-xs text-muted-foreground mt-3">{t("skala.settings.score.customEmpty")}</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {cfg.customCriteria.map((crit) => (
+              <div key={crit.id} className="flex items-center gap-2">
+                <Input
+                  className="flex-1"
+                  placeholder={t("skala.settings.score.customLabelPlaceholder")}
+                  value={crit.label}
+                  onChange={(e) => updateCriterion(crit.id, { label: e.target.value })}
+                />
+                <Input
+                  type="number" step="0.5" className="w-24"
+                  aria-label={t("skala.settings.score.customPointsLabel")}
+                  value={crit.points}
+                  onChange={(e) => updateCriterion(crit.id, { points: e.target.value === "" || e.target.value === "-" ? 0 : Number(e.target.value) })}
+                />
+                <div className="flex items-center gap-1.5" title={t("skala.common.active")}>
+                  <Switch checked={crit.active} onCheckedChange={(v) => updateCriterion(crit.id, { active: v })} />
+                </div>
+                <Button
+                  type="button" variant="ghost" size="icon" className="text-destructive shrink-0"
+                  aria-label={t("skala.common.delete")}
+                  onClick={() => removeCriterion(crit.id)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end">

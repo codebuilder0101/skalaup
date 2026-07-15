@@ -292,6 +292,12 @@ router.post("/submissions", async (req, res) => {
   const isSelf = targetUser === req.user.sub;
   const isOps = req.user.role === "coordinator" || req.user.role === "administrator";
   if (!isSelf && !isOps) return res.status(403).json({ error: "Forbidden" });
+  // R16: coordination does not register its OWN availability (they build the
+  // schedule, they are not scheduled). Submitting on behalf of a freelancer
+  // (targetUser !== self) is still allowed as an ops override.
+  if (isSelf && isOps) {
+    return res.status(403).json({ error: "ops_no_self_availability", message: "Coordenação não registra a própria disponibilidade." });
+  }
   if (!b.cycleId || !b.date || !b.shiftType) {
     return res.status(400).json({ error: "cycleId, date and shiftType are required" });
   }
@@ -388,6 +394,10 @@ router.put("/submissions/bulk", async (req, res) => {
   const isSelf = targetUser === req.user.sub;
   const isOps = req.user.role === "coordinator" || req.user.role === "administrator";
   if (!isSelf && !isOps) return res.status(403).json({ error: "Forbidden" });
+  // R16: coordination does not register its OWN availability (see POST /submissions).
+  if (isSelf && isOps) {
+    return res.status(403).json({ error: "ops_no_self_availability", message: "Coordenação não registra a própria disponibilidade." });
+  }
   if (!b.cycleId || !Array.isArray(b.slots)) {
     return res.status(400).json({ error: "cycleId and slots[] are required" });
   }

@@ -10,9 +10,11 @@ import { sendPush } from "./push.js";
 
 /**
  * Insert one notification. Returns the row id, or null on failure.
- * @param {{recipientUserId: string, type: string, title: string, body?: string, data?: object}} n
+ * Pass push:false to write the in-app (sino) notification without a web push
+ * (e.g. the birthday alert, which the client wants as sino-only).
+ * @param {{recipientUserId: string, type: string, title: string, body?: string, data?: object, push?: boolean}} n
  */
-export async function notify({ recipientUserId, type, title, body = null, data = {} }) {
+export async function notify({ recipientUserId, type, title, body = null, data = {}, push = true }) {
   try {
     const { rows } = await pool.query(
       `insert into public.notifications (recipient_user_id, type, title, body, data, sent_at)
@@ -20,12 +22,14 @@ export async function notify({ recipientUserId, type, title, body = null, data =
       [recipientUserId, type, title, body, JSON.stringify(data ?? {})],
     );
     // Best-effort web push (never blocks or breaks the business action).
-    sendPush(recipientUserId, {
-      title,
-      body: body || "",
-      url: (data && typeof data.path === "string" && data.path) || "/notifications",
-      tag: type,
-    }).catch(() => {});
+    if (push) {
+      sendPush(recipientUserId, {
+        title,
+        body: body || "",
+        url: (data && typeof data.path === "string" && data.path) || "/notifications",
+        tag: type,
+      }).catch(() => {});
+    }
     return rows[0]?.id ?? null;
   } catch (e) {
     console.error(`notify(${type}) failed:`, e.message);

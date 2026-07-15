@@ -201,6 +201,105 @@ async function ensureUpcomingCycle() {
   return rows.length; // 1 when a new cycle was opened this run
 }
 
+// Birthday alert (R2 item 6): notify each active freelancer/visitor on their
+// birthday. Sino-only (no push, per the client). Idempotent per day via a same-day
+// existence check, so a re-run won't double-notify.
+export async function runBirthdayAlerts() {
+  const { rows } = await pool.query(
+    `select u.id, u.name
+       from public.users u
+       join public.freelancer_profiles p on p.user_id = u.id
+      where u.status = 'active' and u.role in ('freelancer','visitor')
+        and p.birth_date is not null
+        and to_char(p.birth_date, 'MM-DD')
+            = to_char((now() at time zone 'America/Sao_Paulo')::date, 'MM-DD')`,
+  );
+  let sent = 0;
+  for (const u of rows) {
+    const dup = await one(
+      `select 1 from public.notifications
+        where recipient_user_id = $1 and type = 'birthday'
+          and (created_at at time zone 'America/Sao_Paulo')::date
+              = (now() at time zone 'America/Sao_Paulo')::date
+        limit 1`,
+      [u.id],
+    );
+    if (dup) continue;
+    await notify({
+      recipientUserId: u.id,
+      type: "birthday",
+      title: "Feliz aniversário! 🎉",
+      body: "A equipe SkalaUp deseja um feliz aniversário!",
+      push: false,
+    });
+    sent++;
+  }
+  return sent;
+}
+
+// Auto-inactivation (R2 item 7): freelancers/visitors with no worked shift (last
+// checkout) in 90+ days are set to 'inactive' — which blocks login (auth.js) and
+// drops them from swap/vaga lists (those queries filter status='active'). Whoever
+// never worked counts from their signup date. Coordinators are warned ~7 days before
+// (once per 14-day window) and notified when someone is inactivated. Reactivation is
+// manual (freelancers roster). Idempotent: only flips 'active' rows.
+export async function runInactivityMaintenance() {
+  const result = { warned: 0, inactivated: 0 };
+  const { rows } = await pool.query(
+    `select u.id, u.name,
+            floor(extract(epoch from (
+              now() - greatest(coalesce(max(att.checkout_at), u.created_at), u.created_at)
+            )) / 86400)::int as days_since
+       from public.users u
+       left join public.shift_attendance att
+              on att.user_id = u.id and att.checkout_at is not null
+      where u.role in ('freelancer','visitor') and u.status = 'active'
+      group by u.id, u.name, u.created_at`,
+  );
+
+  const coords = await coordinatorIds();
+  for (const u of rows) {
+    if (u.days_since >= 90) {
+      const flipped = await one(
+        `update public.users set status = 'inactive' where id = $1 and status = 'active' returning id`,
+        [u.id],
+      );
+      if (!flipped) continue;
+      for (const cid of coords) {
+        await notify({
+          recipientUserId: cid,
+          type: "profile_inactivated",
+          title: "Freelancer inativado",
+          body: `${u.name} ficou 3 meses sem ser escalado e foi inativado automaticamente.`,
+          data: { userId: u.id, path: "/freelancers" },
+        });
+      }
+      result.inactivated++;
+    } else if (u.days_since >= 83) {
+      // Pre-warning window (7 days before 90). Warn at most once per 14 days.
+      const recent = await one(
+        `select 1 from public.notifications
+          where type = 'inactivity_warning' and data->>'userId' = $1
+            and created_at > now() - interval '14 days' limit 1`,
+        [u.id],
+      );
+      if (recent) continue;
+      const daysLeft = 90 - u.days_since;
+      for (const cid of coords) {
+        await notify({
+          recipientUserId: cid,
+          type: "inactivity_warning",
+          title: "Freelancer prestes a ser inativado",
+          body: `${u.name} está há ${u.days_since} dias sem ser escalado. Será inativado em ${daysLeft} dia(s) se não for escalado.`,
+          data: { userId: u.id, path: "/freelancers" },
+        });
+      }
+      result.warned++;
+    }
+  }
+  return result;
+}
+
 export async function runCycleMaintenance() {
   const summary = { cyclesOpened: 0, remindersSent: 0, cyclesClosed: 0, deficitSlots: 0 };
 
@@ -248,6 +347,25 @@ export async function runCycleMaintenance() {
   } catch (e) {
     console.error("[scheduler] feedback requests failed:", e.message);
     summary.feedbackRequests = 0;
+  }
+
+  // 4) Birthday alerts (R2 item 6).
+  try {
+    summary.birthdayAlerts = await runBirthdayAlerts();
+  } catch (e) {
+    console.error("[scheduler] birthday alerts failed:", e.message);
+    summary.birthdayAlerts = 0;
+  }
+
+  // 5) Auto-inactivation after 3 months without scheduling (R2 item 7).
+  try {
+    const inact = await runInactivityMaintenance();
+    summary.inactivityWarned = inact.warned;
+    summary.inactivated = inact.inactivated;
+  } catch (e) {
+    console.error("[scheduler] inactivity maintenance failed:", e.message);
+    summary.inactivityWarned = 0;
+    summary.inactivated = 0;
   }
 
   return summary;

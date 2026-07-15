@@ -813,6 +813,72 @@ alter table public.score_events add constraint score_events_event_type_check che
   'flexible_availability','furo_covered'));
 
 -- =============================================================================
+-- CLIENT REQUIREMENTS — ROUND 2 (2026-07). All idempotent, safe to re-run.
+-- =============================================================================
+
+-- Item 1 — payroll export pulls bank name alongside the PIX key (payment is via
+-- PIX; the bank name is a reference only).
+alter table public.freelancer_profiles add column if not exists bank_name text;
+
+-- Item 6 — birth date for the birthday alert (the freelancer is self-notified on
+-- the day, via the daily scheduler).
+alter table public.freelancer_profiles add column if not exists birth_date date;
+
+-- Item 3 — monthly cap (in points) on manual score adjustments per freelancer.
+-- Manual points are positive-only and stop once this cap is reached for the month.
+alter table public.app_settings
+  add column if not exists manual_score_monthly_cap numeric(6,2) not null default 10;
+
+-- R15 — coordinator-defined custom scoring criteria (manual only). A jsonb array of
+-- { id, label, points, active }. Applied by hand from the freelancer score dialog as
+-- manual_adjustment events (points may be negative); never auto-calculated.
+alter table public.app_settings
+  add column if not exists custom_score_criteria jsonb not null default '[]'::jsonb;
+
+-- Item 2 — payroll period gains a 'paid' state: aberta -> fechada -> paga (then
+-- kept as history). paid_at/paid_by audit when/who marked it paid.
+alter table public.payroll_periods add column if not exists paid_at timestamptz;
+alter table public.payroll_periods add column if not exists paid_by uuid references public.users(id) on delete set null;
+alter table public.payroll_periods drop constraint if exists payroll_periods_status_check;
+alter table public.payroll_periods add constraint payroll_periods_status_check
+  check (status in ('open','closed','paid'));
+
+-- Item 5 — per-employee public rating via QR. A permanent public token routes an
+-- unauthenticated page (/rate/:token); customer ratings are INFORMATIONAL ONLY and
+-- never touch the score. Existing rows get a unique token from the default.
+alter table public.freelancer_profiles
+  add column if not exists public_rating_token uuid not null default gen_random_uuid();
+create unique index if not exists idx_freelancer_profiles_rating_token
+  on public.freelancer_profiles(public_rating_token);
+
+create table if not exists public.public_ratings (
+  id                 uuid primary key default gen_random_uuid(),
+  created_at         timestamptz not null default now(),
+  freelancer_user_id uuid not null references public.users(id) on delete cascade,
+  stars              smallint not null check (stars between 1 and 5),
+  comment            text,
+  device_hash        text,                                          -- per-device/day throttle key
+  rated_on           date not null default (now() at time zone 'America/Sao_Paulo')::date
+);
+create index if not exists idx_public_ratings_freelancer
+  on public.public_ratings(freelancer_user_id, created_at desc);
+-- Anti-spam (Item 5 decision): one rating per device per freelancer per day.
+create unique index if not exists idx_public_ratings_daily
+  on public.public_ratings(freelancer_user_id, device_hash, rated_on)
+  where device_hash is not null;
+
+-- Items 6/7 — new notification types: birthday self-alert; inactivity pre-warning
+-- and inactivation notice (both to coordination).
+alter table public.notifications drop constraint if exists notifications_type_check;
+alter table public.notifications add constraint notifications_type_check check (type in (
+  'day_start_reminder','checkout_reminder','checkin_absence','third_late',
+  'bonus_loss_warning','second_no_show','swap_request','availability_cancelled',
+  'coverage_deficit','availability_reminder','schedule_conflict',
+  'weekday_eligibility','manager_checkin_checkout','feedback_received',
+  'feedback_request','schedule_published','schedule_assigned','schedule_removed',
+  'shift_reminder','waitlist_opening','birthday','inactivity_warning','profile_inactivated'));
+
+-- =============================================================================
 -- ROW LEVEL SECURITY
 -- Permissive policies mirror the existing project (anon + authenticated).
 -- TODO before production: replace with per-role policies (coordinator full,
@@ -837,7 +903,7 @@ begin
     'shift_swap_requests','absences','score_levels','score_events','engagement_events',
     'monthly_performance','manager_feedback','feedback_requests','notifications',
     'device_tokens','payroll_periods','payroll_entries','weekly_bonus_eligibility',
-    'calendar_export_tokens','audit_log'
+    'calendar_export_tokens','audit_log','public_ratings'
   ]
   loop
     execute format('alter table public.%I enable row level security;', t);

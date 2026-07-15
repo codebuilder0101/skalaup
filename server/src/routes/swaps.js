@@ -10,18 +10,20 @@ import { getScorePoints } from "../scoreConfig.js";
 //   pending_target → (target accepts) approved   ← auto-approved on acceptance
 //   any party can short-circuit to rejected/cancelled.
 // When the target accepts, the swap is applied straight away: the shift is
-// reassigned to the target (assigned_via='swap') and scoring is applied
-// (−1 requester / +2 accepter, capped at app_settings.swap_scoring_cap per
-// accepter per month). Coordination is notified and may REPROVAR an approved
-// swap while the shift is still upcoming — that reverses the reassignment and
-// voids the swap scoring (status → rejected). The old 'pending_coordinator'
-// gate is retired: coordinators no longer approve, they only veto after the fact.
+// reassigned to the target (assigned_via='swap'). Scoring follows the "cobrir furo"
+// rule: the requester takes the −1 swap_requested penalty immediately, while the
+// accepter — who is covering the requester's furo by taking a shift that wasn't
+// theirs — earns the furo-cover reward (+3) LATER, on checkout, and only if they
+// actually work the shift (see awardSwapCoverIfWorked in attendance.js). Coordination
+// is notified and may REPROVAR an approved swap while the shift is still upcoming —
+// that reverses the reassignment and voids the swap scoring (status → rejected). The
+// old 'pending_coordinator' gate is retired: coordinators only veto after the fact.
 const router = Router();
 router.use(requireAuth);
 const requireOps = requireRole("coordinator", "administrator");
 const isOpsRole = (role) => role === "coordinator" || role === "administrator";
 
-const SWAP_POINTS = { swap_requested: -1, swap_accepted: 2 };
+const SWAP_POINTS = { swap_requested: -1 };
 
 // Enriched columns for a swap row + its shift/people context.
 const SWAP_SELECT = `
@@ -63,14 +65,10 @@ async function addScore({ userId, eventType, points, occurredOn, referenceId }) 
   await recomputeScore(userId);
 }
 
-async function swapScoringCap() {
-  const row = await one(`select swap_scoring_cap as cap from public.app_settings where id = 1`);
-  return Number(row?.cap ?? 3);
-}
-
-// Apply an accepted swap: reassign the shift to the target and score it
-// (−1 requester, +2 accepter capped per month). Returns the points the accepter
-// actually earned (0 once the monthly cap is hit).
+// Apply an accepted swap: reassign the shift to the target and take the requester's
+// −1 swap_requested penalty. The accepter earns nothing here — the furo-cover reward
+// (+3) is granted later, on checkout, only if they actually work the covered shift
+// (awardSwapCoverIfWorked in attendance.js), mirroring the vaga/waiting-list rule.
 async function applySwapAndScore(s) {
   const cfgPoints = await getScorePoints();
   await pool.query(
@@ -82,22 +80,11 @@ async function applySwapAndScore(s) {
     userId: s.requesterUserId, eventType: "swap_requested",
     points: cfgPoints.swap_requested ?? SWAP_POINTS.swap_requested, occurredOn: s.date, referenceId: s.id,
   });
-  const cap = await swapScoringCap();
-  const accepted = await one(
-    `select count(*)::int as n from public.score_events
-      where user_id=$1 and event_type='swap_accepted' and is_voided=false and month_ref=$2`,
-    [s.targetUserId, monthRefOf(s.date)],
-  );
-  const awardPoints = accepted.n < cap ? (cfgPoints.swap_accepted ?? SWAP_POINTS.swap_accepted) : 0;
-  await addScore({
-    userId: s.targetUserId, eventType: "swap_accepted",
-    points: awardPoints, occurredOn: s.date, referenceId: s.id,
-  });
-  return awardPoints;
 }
 
-// Reverse an approved swap: give the shift back to the requester and void the
-// swap's score events for both parties.
+// Reverse an approved swap: give the shift back to the requester and void the swap's
+// score events for both parties — including any furo-cover reward the accepter may
+// have earned by working the swapped shift before it was reproved.
 async function reverseSwap(s) {
   await pool.query(
     `update public.schedule_assignments
@@ -108,6 +95,12 @@ async function reverseSwap(s) {
     `update public.score_events set is_voided=true
       where reference_type='swap' and reference_id=$1 and is_voided=false`,
     [s.id],
+  );
+  await pool.query(
+    `update public.score_events set is_voided=true
+      where reference_type='assignment' and reference_id=$1
+        and event_type='furo_covered' and is_voided=false`,
+    [s.assignmentId],
   );
   await recomputeScore(s.requesterUserId);
   await recomputeScore(s.targetUserId);
@@ -325,7 +318,7 @@ router.post("/:id/respond", async (req, res) => {
       return res.status(409).json({ error: "target_busy", message: "Você já está escalado neste turno." });
     }
 
-    const awardPoints = await applySwapAndScore(s);
+    await applySwapAndScore(s);
     await pool.query(
       `update public.shift_swap_requests set status='approved', target_responded_at=now() where id=$1`,
       [s.id],
@@ -349,7 +342,7 @@ router.post("/:id/respond", async (req, res) => {
         data: { swapId: s.id },
       });
     }
-    res.json({ status: "approved", accepterAwarded: awardPoints });
+    res.json({ status: "approved" });
   } catch (e) {
     console.error("swap respond error:", e.message);
     res.status(500).json({ error: "Falha ao responder." });

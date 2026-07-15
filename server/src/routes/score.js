@@ -66,14 +66,61 @@ router.post("/events", requireOps, async (req, res) => {
     return res.status(400).json({ error: "userId, eventType and occurredOn are required" });
   }
   if (!MANUAL_EVENT_TYPES.includes(b.eventType)) return res.status(400).json({ error: "Invalid eventType" });
-  const points = b.points ?? (await getScorePoints())[b.eventType];
+  let points = b.points ?? (await getScorePoints())[b.eventType];
+  let notes = b.notes ?? null;
+
+  // Manual adjustments (R2 item 3): free-form is positive-only. A coordinator-defined
+  // custom criterion (R15) may instead be applied — its point value is authoritative
+  // (may be negative) and its label is recorded in the notes. Either way the POSITIVE
+  // manual points for the month are capped by app_settings.manual_score_monthly_cap;
+  // negative adjustments are never capped.
+  if (b.eventType === "manual_adjustment") {
+    if (b.criterionId) {
+      const cfgRow = await one(`select custom_score_criteria as cc from public.app_settings where id = 1`);
+      const list = Array.isArray(cfgRow?.cc) ? cfgRow.cc : [];
+      const crit = list.find((c) => c && c.id === b.criterionId);
+      if (!crit) return res.status(400).json({ error: "invalid_criterion", message: "Critério não encontrado." });
+      if (crit.active === false) return res.status(400).json({ error: "inactive_criterion", message: "Este critério está inativo." });
+      points = Number(crit.points);
+      const reason = String(b.notes ?? "").trim();
+      notes = reason ? `${crit.label} — ${reason}` : String(crit.label);
+    } else {
+      points = Number(points);
+      if (!Number.isFinite(points) || points <= 0) {
+        return res.status(400).json({ error: "invalid_points", message: "Os pontos manuais devem ser um valor positivo." });
+      }
+    }
+    if (!Number.isFinite(points) || points === 0) {
+      return res.status(400).json({ error: "invalid_points", message: "Pontuação inválida." });
+    }
+    // Cap only positive manual points (free-form + positive criteria).
+    if (points > 0) {
+      const monthRef = monthRefOf(b.occurredOn);
+      const capRow = await one(`select manual_score_monthly_cap as cap from public.app_settings where id = 1`);
+      const cap = Number(capRow?.cap ?? 10);
+      const usedRow = await one(
+        `select coalesce(sum(points) filter (where points > 0), 0) as used from public.score_events
+          where user_id = $1 and event_type = 'manual_adjustment' and is_voided = false and month_ref = $2`,
+        [b.userId, monthRef],
+      );
+      const remaining = Math.max(0, cap - Number(usedRow.used));
+      if (points > remaining) {
+        return res.status(409).json({
+          error: "manual_cap_reached",
+          message: `Limite mensal de pontos manuais atingido. Restam ${remaining} de ${cap} pontos neste mês.`,
+          remaining, cap,
+        });
+      }
+    }
+  }
+
   const row = await one(
     `insert into public.score_events
        (user_id, event_type, points, reference_type, reference_id, occurred_on, month_ref, created_by, notes)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning ${COLS}`,
     [
       b.userId, b.eventType, points, b.referenceType ?? "manual", b.referenceId ?? null,
-      b.occurredOn, monthRefOf(b.occurredOn), b.createdBy ?? req.user.sub, b.notes ?? null,
+      b.occurredOn, monthRefOf(b.occurredOn), b.createdBy ?? req.user.sub, notes,
     ],
   );
   await recomputeScore(b.userId);

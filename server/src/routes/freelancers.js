@@ -41,12 +41,14 @@ const SELECT = `
          case when p.id is null then null else json_build_object(
            'id', p.id, 'userId', p.user_id, 'memberType', p.member_type,
            'photoUrl', p.photo_url,
-           'cpf', p.cpf, 'pixKey', p.pix_key, 'whatsapp', p.whatsapp,
+           'cpf', p.cpf, 'pixKey', p.pix_key, 'bankName', p.bank_name,
+           'birthDate', p.birth_date, 'whatsapp', p.whatsapp,
            'homeAddress', p.home_address, 'homeCep', p.home_cep,
            'homeLatitude', p.home_latitude, 'homeLongitude', p.home_longitude,
            'transport', p.transport, 'experience', p.experience,
            'hireDate', p.hire_date, 'currentScore', p.current_score,
            'currentLevel', p.current_level, 'notes', p.notes,
+           'publicRatingToken', p.public_rating_token,
            'createdAt', p.created_at, 'updatedAt', p.updated_at
          ) end as profile,
          coalesce((
@@ -94,13 +96,15 @@ router.post("/", requireOps, async (req, res) => {
     );
     await pool.query(
       `insert into public.freelancer_profiles
-         (user_id, member_type, cpf, pix_key, whatsapp, home_address, home_cep)
-       values ($1,$2,$3,$4,$5,$6,$7)
+         (user_id, member_type, cpf, pix_key, bank_name, birth_date, whatsapp, home_address, home_cep)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        on conflict (user_id) do update set
-         cpf = excluded.cpf, pix_key = excluded.pix_key, whatsapp = excluded.whatsapp,
+         cpf = excluded.cpf, pix_key = excluded.pix_key, bank_name = excluded.bank_name,
+         birth_date = excluded.birth_date, whatsapp = excluded.whatsapp,
          home_address = excluded.home_address, home_cep = excluded.home_cep`,
       [u.id, role === "visitor" ? "visitor" : "member",
-       b.cpf ?? null, b.pixKey ?? null, b.whatsapp ?? null, b.homeAddress ?? null, b.homeCep ?? null],
+       b.cpf ?? null, b.pixKey ?? null, b.bankName ?? null, b.birthDate ?? null,
+       b.whatsapp ?? null, b.homeAddress ?? null, b.homeCep ?? null],
     );
     // Link the member to the selected clients (§3) — gates their participation.
     if (Array.isArray(b.restaurantIds)) await replaceMemberClients(u.id, b.restaurantIds);
@@ -128,24 +132,66 @@ router.put("/:id", async (req, res) => {
   }
 
   // Only touch the profile when at least one ficha field is present (avoid wiping).
-  const profileKeys = ["cpf", "pixKey", "whatsapp", "homeAddress", "homeCep"];
+  const profileKeys = ["cpf", "pixKey", "bankName", "birthDate", "whatsapp", "homeAddress", "homeCep"];
   if (profileKeys.some((k) => k in b)) {
     await pool.query(
       `insert into public.freelancer_profiles
-         (user_id, member_type, cpf, pix_key, whatsapp, home_address, home_cep)
+         (user_id, member_type, cpf, pix_key, bank_name, birth_date, whatsapp, home_address, home_cep)
        values ($1,
                coalesce((select member_type from public.freelancer_profiles where user_id = $1), 'member'),
-               $2,$3,$4,$5,$6)
+               $2,$3,$4,$5,$6,$7,$8)
        on conflict (user_id) do update set
-         cpf = excluded.cpf, pix_key = excluded.pix_key, whatsapp = excluded.whatsapp,
+         cpf = excluded.cpf, pix_key = excluded.pix_key, bank_name = excluded.bank_name,
+         birth_date = excluded.birth_date, whatsapp = excluded.whatsapp,
          home_address = excluded.home_address, home_cep = excluded.home_cep`,
-      [req.params.id, b.cpf ?? null, b.pixKey ?? null, b.whatsapp ?? null, b.homeAddress ?? null, b.homeCep ?? null],
+      [req.params.id, b.cpf ?? null, b.pixKey ?? null, b.bankName ?? null, b.birthDate ?? null,
+       b.whatsapp ?? null, b.homeAddress ?? null, b.homeCep ?? null],
     );
   }
 
   // Replace client links only when the field is sent (avoid clearing on partial edits).
   if (Array.isArray(b.restaurantIds)) await replaceMemberClients(req.params.id, b.restaurantIds);
 
+  const row = await one(`${SELECT} where u.id = $1`, [req.params.id]);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  res.json(row);
+});
+
+// GET /:id/ratings — public (QR) rating summary for a freelancer (R2 item 5).
+// Informational only (never affects the score). Own profile or coordinator.
+router.get("/:id/ratings", async (req, res) => {
+  if (!canAccessUser(req)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    const summary = await one(
+      `select count(*)::int as count,
+              coalesce(round(avg(stars)::numeric, 2), 0)::float8 as average
+         from public.public_ratings where freelancer_user_id = $1`,
+      [req.params.id],
+    );
+    const { rows: recent } = await pool.query(
+      `select id, stars, comment, created_at as "createdAt"
+         from public.public_ratings where freelancer_user_id = $1
+        order by created_at desc limit 20`,
+      [req.params.id],
+    );
+    res.json({ count: summary.count, average: summary.average, recent });
+  } catch (e) {
+    console.error("freelancer ratings error:", e.message);
+    res.status(500).json({ error: "Falha ao carregar avaliações." });
+  }
+});
+
+// PUT /:id/status { status } — coordinator activates/deactivates a freelancer.
+// Reactivation path for auto-inactivated profiles (R2 item 7).
+router.put("/:id/status", requireOps, async (req, res) => {
+  const status = (req.body || {}).status;
+  if (!["active", "inactive"].includes(status)) {
+    return res.status(400).json({ error: "status must be 'active' or 'inactive'" });
+  }
+  await pool.query(
+    `update public.users set status = $2 where id = $1 and role in ('freelancer','visitor')`,
+    [req.params.id, status],
+  );
   const row = await one(`${SELECT} where u.id = $1`, [req.params.id]);
   if (!row) return res.status(404).json({ error: "Not found" });
   res.json(row);
@@ -170,13 +216,14 @@ router.put("/:id/profile", async (req, res) => {
   const b = req.body || {};
   const row = await one(
     `insert into public.freelancer_profiles
-       (user_id, member_type, photo_url, cpf, pix_key, whatsapp,
+       (user_id, member_type, photo_url, cpf, pix_key, bank_name, birth_date, whatsapp,
         home_address, home_cep, home_latitude, home_longitude,
         transport, experience, hire_date, notes)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      on conflict (user_id) do update set
        member_type = excluded.member_type, photo_url = excluded.photo_url,
-       cpf = excluded.cpf, pix_key = excluded.pix_key, whatsapp = excluded.whatsapp,
+       cpf = excluded.cpf, pix_key = excluded.pix_key, bank_name = excluded.bank_name,
+       birth_date = excluded.birth_date, whatsapp = excluded.whatsapp,
        home_address = excluded.home_address, home_cep = excluded.home_cep,
        home_latitude = excluded.home_latitude, home_longitude = excluded.home_longitude,
        transport = excluded.transport, experience = excluded.experience,
@@ -184,7 +231,7 @@ router.put("/:id/profile", async (req, res) => {
      returning id`,
     [
       req.params.id, b.memberType ?? "member", b.photoUrl ?? null,
-      b.cpf ?? null, b.pixKey ?? null, b.whatsapp ?? null,
+      b.cpf ?? null, b.pixKey ?? null, b.bankName ?? null, b.birthDate ?? null, b.whatsapp ?? null,
       b.homeAddress ?? null, b.homeCep ?? null, b.homeLatitude ?? null, b.homeLongitude ?? null,
       b.transport ?? null, b.experience ?? null, b.hireDate ?? null, b.notes ?? null,
     ],

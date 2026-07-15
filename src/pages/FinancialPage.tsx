@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   DollarSign, Loader2, RefreshCw, Lock, LockOpen, Download, Plus, Trash2,
   ChevronDown, ChevronRight, TrendingUp, TrendingDown, CalendarDays, Users, Coins,
+  BadgeCheck, CalendarClock,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/card";
@@ -22,7 +23,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  getPayrollSummary, recomputePayroll, closePayroll, reopenPayroll,
+  getPayrollSummary, recomputePayroll, closePayroll, reopenPayroll, markPaidPayroll,
   addPayrollAdjustment, deletePayrollAdjustment, listPayrollEntries,
   type PayrollReport, type PayrollFreelancer, type PayrollEntry,
 } from "@/lib/skalaup/payroll";
@@ -89,7 +90,11 @@ export default function FinancialPage() {
     })();
   }, []);
 
-  const isClosed = report?.period.status === "closed";
+  const status = report?.period.status ?? "open";
+  const isClosed = status === "closed";
+  const isPaid = status === "paid";
+  // A closed OR paid folha is frozen — no edits/recompute until reopened.
+  const isFrozen = isClosed || isPaid;
 
   const applyResult = (data: PayrollReport | null, okMsg: string) => {
     if (data) { setReport(data); setExpanded(new Set()); setEntriesByUser({}); toast.success(okMsg); }
@@ -117,6 +122,14 @@ export default function FinancialPage() {
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     applyResult(data, t("skala.financial.reopened"));
+  };
+
+  const markPaid = async () => {
+    setBusy(true);
+    const { data, error } = await markPaidPayroll(month);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    applyResult(data, t("skala.financial.markedPaid"));
   };
 
   const toggleExpand = async (userId: string) => {
@@ -165,7 +178,9 @@ export default function FinancialPage() {
     // pt-BR: comma decimal separator so Excel reads the value as a number, not text.
     const money = (n: number) => (n || 0).toFixed(2).replace(".", ",");
     const header = [
-      t("skala.financial.csv.month"), t("skala.financial.csv.freelancer"), t("skala.financial.csv.restaurant"),
+      t("skala.financial.csv.month"), t("skala.financial.csv.freelancer"),
+      t("skala.financial.csv.pixKey"), t("skala.financial.csv.bank"),
+      t("skala.financial.csv.restaurant"),
       t("skala.financial.csv.shifts"), t("skala.financial.csv.shiftPay"), t("skala.financial.csv.bonus"),
       t("skala.financial.csv.lateDiscount"), t("skala.financial.csv.noShowDiscount"),
       t("skala.financial.csv.adjustment"), t("skala.financial.csv.net"),
@@ -175,15 +190,17 @@ export default function FinancialPage() {
     const SEP = ";";
     const lines = [header.map(esc).join(SEP)];
     for (const fr of report.freelancers) {
+      const pix = fr.pixKey ?? "";
+      const bank = fr.bankName ?? "";
       for (const rb of fr.byRestaurant) {
         lines.push([
-          month, fr.name, rb.restaurantName, String(rb.shiftCount),
+          month, fr.name, pix, bank, rb.restaurantName, String(rb.shiftCount),
           money(rb.shiftPay), money(rb.weekendBonus), money(rb.lateDiscount),
           money(rb.noShowDiscount), money(rb.manualAdjustment), money(rb.net),
         ].map(esc).join(SEP));
       }
       lines.push([
-        month, fr.name, t("skala.financial.csv.total"), String(fr.totals.shiftCount),
+        month, fr.name, pix, bank, t("skala.financial.csv.total"), String(fr.totals.shiftCount),
         money(fr.totals.shiftPay), money(fr.totals.weekendBonus), money(fr.totals.lateDiscount),
         money(fr.totals.noShowDiscount), money(fr.totals.manualAdjustment), money(fr.totals.net),
       ].map(esc).join(SEP));
@@ -229,7 +246,9 @@ export default function FinancialPage() {
             <div className="space-y-1.5">
               <Label className="text-xs">{t("skala.financial.status")}</Label>
               <div className="h-9 flex items-center">
-                {isClosed ? (
+                {isPaid ? (
+                  <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600"><BadgeCheck className="h-3 w-3" />{t("skala.financial.statusPaid")}</Badge>
+                ) : isClosed ? (
                   <Badge variant="secondary" className="gap-1"><Lock className="h-3 w-3" />{t("skala.financial.statusClosed")}</Badge>
                 ) : (
                   <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600"><LockOpen className="h-3 w-3" />{t("skala.financial.statusOpen")}</Badge>
@@ -241,7 +260,7 @@ export default function FinancialPage() {
               <Button variant="outline" size="sm" className="rounded-xl" onClick={exportCsv} disabled={!report || report.freelancers.length === 0}>
                 <Download className="mr-1.5 h-4 w-4" />{t("skala.financial.exportCsv")}
               </Button>
-              {!isClosed && (
+              {!isFrozen && (
                 <>
                   <Button variant="outline" size="sm" className="rounded-xl" onClick={() => void openAdjust()} disabled={busy}>
                     <Plus className="mr-1.5 h-4 w-4" />{t("skala.financial.addAdjustment")}
@@ -256,17 +275,38 @@ export default function FinancialPage() {
                 </>
               )}
               {isClosed && (
+                <Button size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-600 shadow-sm" onClick={() => void markPaid()} disabled={busy}>
+                  <BadgeCheck className="mr-1.5 h-4 w-4" />{t("skala.financial.markPaid")}
+                </Button>
+              )}
+              {isFrozen && (
                 <Button variant="outline" size="sm" className="rounded-xl" onClick={() => void reopenMonth()} disabled={busy}>
                   <LockOpen className="mr-1.5 h-4 w-4" />{t("skala.financial.reopenMonth")}
                 </Button>
               )}
             </div>
           </div>
-          {isClosed && report?.period.closedAt && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              {t("skala.financial.closedInfo", {
-                who: report.period.closedByName ?? "—",
-                when: new Intl.DateTimeFormat(lng, { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.period.closedAt)),
+          {isClosed && (
+            <div className="mt-2 space-y-1">
+              {report?.period.closedAt && (
+                <p className="text-xs text-muted-foreground">
+                  {t("skala.financial.closedInfo", {
+                    who: report.period.closedByName ?? "—",
+                    when: new Intl.DateTimeFormat(lng, { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.period.closedAt)),
+                  })}
+                </p>
+              )}
+              <p className="text-xs text-amber-600 flex items-center gap-1">
+                <CalendarClock className="h-3 w-3" />{t("skala.financial.dueHint")}
+              </p>
+            </div>
+          )}
+          {isPaid && report?.period.paidAt && (
+            <p className="mt-2 text-xs text-emerald-600 flex items-center gap-1">
+              <BadgeCheck className="h-3 w-3" />
+              {t("skala.financial.paidInfo", {
+                who: report.period.paidByName ?? "—",
+                when: new Intl.DateTimeFormat(lng, { dateStyle: "medium", timeStyle: "short" }).format(new Date(report.period.paidAt)),
               })}
             </p>
           )}
@@ -316,7 +356,7 @@ export default function FinancialPage() {
                     expanded={expanded.has(fr.userId)}
                     entries={entriesByUser[fr.userId]}
                     fmtBRL={fmtBRL}
-                    isClosed={!!isClosed}
+                    isClosed={isFrozen}
                     entryTypeLabel={entryTypeLabel}
                     onToggle={() => void toggleExpand(fr.userId)}
                     onAdjust={() => openAdjust(fr.userId)}

@@ -275,7 +275,7 @@ export default function AvailabilityPage() {
                 </p>
               </div>
             </div>
-            {cycle && (
+            {cycle && !isOps && (
               <div className="shrink-0 text-right">
                 <p className="text-2xl font-bold text-primary">{selectedCount}</p>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("skala.availability.selectedCount")}</p>
@@ -294,8 +294,8 @@ export default function AvailabilityPage() {
           </div>
         )}
 
-        {/* Flexibility + review hints */}
-        {editable && clients.length > 0 && (
+        {/* Flexibility + review hints — freelancers only (R16: ops never submit here). */}
+        {editable && clients.length > 0 && !isOps && (
           <div className="space-y-2">
             <div className="flex items-start gap-2 rounded-xl border border-primary/25 bg-primary/[0.04] px-4 py-2.5 text-sm text-foreground">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -308,7 +308,8 @@ export default function AvailabilityPage() {
           </div>
         )}
 
-        {loading ? (
+        {/* Submission flow — freelancers/visitors only. Ops (R16) manage the window above. */}
+        {!isOps && (loading ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{t("skala.common.loading")}</p>
         ) : !cycle ? (
           <Card className="p-10 text-center text-muted-foreground">{t("skala.availability.noCycle")}</Card>
@@ -340,10 +341,10 @@ export default function AvailabilityPage() {
               </Card>
             )}
           </div>
-        )}
+        ))}
 
-        {/* Sticky action bar: select all / clear / submit (§ batch submit). */}
-        {editable && clients.length > 0 && (
+        {/* Sticky action bar: select all / clear / submit (§ batch submit). Freelancers only. */}
+        {editable && clients.length > 0 && !isOps && (
           <div className="sticky bottom-4 z-10">
             <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card/95 px-4 py-3 shadow-lg shadow-black/5 backdrop-blur">
               <Button variant="outline" size="sm" className="rounded-xl" onClick={selectAll} disabled={submitting}>

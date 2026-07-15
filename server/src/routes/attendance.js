@@ -325,6 +325,19 @@ async function awardExtraShiftIfWorked(assignmentId) {
   await grantFuroCoverOnce(a.userId, assignmentId, a.date, "Trabalhou um turno extra (não previsto na escala)");
 }
 
+// Worked a shift taken over via a swap (troca) → furo-cover reward, ungated. The
+// accepter covered the requester's furo by taking a shift that wasn't theirs (client
+// rule), and is rewarded once the shift is actually worked. Idempotent per assignment.
+async function awardSwapCoverIfWorked(assignmentId) {
+  const a = await one(
+    `select user_id as "userId", date::text as date, assigned_via as "assignedVia"
+       from public.schedule_assignments where id = $1`,
+    [assignmentId],
+  );
+  if (!a || a.assignedVia !== "swap") return;
+  await grantFuroCoverOnce(a.userId, assignmentId, a.date, "Cobriu um furo assumido por troca de turno");
+}
+
 // POST /api/attendance/checkout { assignmentId }
 router.post("/checkout", async (req, res) => {
   try {
@@ -351,6 +364,8 @@ router.post("/checkout", async (req, res) => {
     await awardFuroCoverIfEarned(assignmentId).catch((e) => console.error("furo reward failed:", e.message));
     // Worked an extra shift → grant the cover reward (ungated). Best-effort.
     await awardExtraShiftIfWorked(assignmentId).catch((e) => console.error("extra reward failed:", e.message));
+    // Worked a shift taken over via a swap → grant the furo-cover reward (ungated). Best-effort.
+    await awardSwapCoverIfWorked(assignmentId).catch((e) => console.error("swap cover reward failed:", e.message));
     res.json(await rowByAssignment(assignmentId));
   } catch (e) {
     console.error("Check-out error:", e.message);

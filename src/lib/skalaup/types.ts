@@ -37,7 +37,9 @@ export type NotificationType =
   | "bonus_loss_warning" | "second_no_show" | "swap_request" | "availability_cancelled"
   | "coverage_deficit" | "availability_reminder" | "schedule_conflict"
   | "weekday_eligibility" | "manager_checkin_checkout" | "feedback_received"
-  | "feedback_request" | "schedule_published" | "shift_reminder";
+  | "feedback_request" | "schedule_published" | "schedule_assigned" | "schedule_removed"
+  | "shift_reminder" | "waitlist_opening" | "birthday" | "inactivity_warning"
+  | "profile_inactivated";
 export type PayrollEntryType =
   | "shift_pay" | "weekend_bonus" | "late_discount" | "no_show_discount" | "manual_adjustment";
 
@@ -157,6 +159,8 @@ export interface FreelancerProfileRow {
   photo_url: string | null;
   cpf: string | null;
   pix_key: string | null;
+  bank_name: string | null;
+  birth_date: string | null;
   whatsapp: string | null;
   home_address: string | null;
   home_cep: string | null;
@@ -168,6 +172,7 @@ export interface FreelancerProfileRow {
   current_score: number;
   current_level: number | null;
   notes: string | null;
+  public_rating_token: string | null;
 }
 
 export interface FreelancerProfile {
@@ -179,6 +184,8 @@ export interface FreelancerProfile {
   photoUrl: string | null;
   cpf: string | null;
   pixKey: string | null;
+  bankName: string | null;
+  birthDate: string | null;
   whatsapp: string | null;
   homeAddress: string | null;
   homeCep: string | null;
@@ -190,6 +197,7 @@ export interface FreelancerProfile {
   currentScore: number;
   currentLevel: number | null;
   notes: string | null;
+  publicRatingToken: string | null;
 }
 
 // ---- Availability cycle / submissions --------------------------------------

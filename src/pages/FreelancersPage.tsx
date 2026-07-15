@@ -1,23 +1,33 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { QRCodeCanvas } from "qrcode.react";
 import {
-  Users, Star, Car, IdCard, KeyRound, Phone, MapPin, Plus, Pencil, Trash2, Mail, Copy, KeyRound as KeyIcon, Store,
+  Users, Star, Car, IdCard, KeyRound, Phone, MapPin, Plus, Pencil, Trash2, Mail, Copy, KeyRound as KeyIcon, Store, UserCheck,
+  QrCode, Download, Printer,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  listFreelancers, createFreelancer, updateFreelancer, deleteFreelancer,
+  listFreelancers, createFreelancer, updateFreelancer, deleteFreelancer, setFreelancerStatus,
   type FreelancerWithProfile,
 } from "@/lib/skalaup/freelancers";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
+import { addScoreEvent } from "@/lib/skalaup/score";
+import { getScoreSettings, type CustomCriterion } from "@/lib/skalaup/settings";
+import { getFreelancerRatings, type FreelancerRatings } from "@/lib/skalaup/publicRatings";
 import type { Restaurant } from "@/lib/skalaup/types";
 import {
   maskCpf, maskCep, maskPhone, isValidCpf, isValidCep, isValidPhone,
@@ -30,15 +40,19 @@ type FormState = {
   phone: string;
   cpf: string;
   pixKey: string;
+  bankName: string;
+  birthDate: string;
   whatsapp: string;
   homeAddress: string;
   homeCep: string;
   restaurantIds: string[];
+  active: boolean;
 };
 
 const emptyForm: FormState = {
-  name: "", email: "", phone: "", cpf: "", pixKey: "", whatsapp: "", homeAddress: "", homeCep: "",
-  restaurantIds: [],
+  name: "", email: "", phone: "", cpf: "", pixKey: "", bankName: "", birthDate: "",
+  whatsapp: "", homeAddress: "", homeCep: "",
+  restaurantIds: [], active: true,
 };
 
 export default function FreelancersPage() {
@@ -50,6 +64,21 @@ export default function FreelancersPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [tempPwd, setTempPwd] = useState<string | null>(null);
+
+  // Manual score adjustment (R2 item 3) — positive-only points + required reason.
+  // R15: optionally apply a coordinator-defined custom criterion (may be negative).
+  const [scoreTarget, setScoreTarget] = useState<FreelancerWithProfile | null>(null);
+  const [scorePts, setScorePts] = useState("");
+  const [scoreReason, setScoreReason] = useState("");
+  const [scoreCriterionId, setScoreCriterionId] = useState("");
+  const [criteria, setCriteria] = useState<CustomCriterion[]>([]);
+  const [scoreSaving, setScoreSaving] = useState(false);
+
+  // Per-employee QR + customer ratings (R2 item 5).
+  const [qrTarget, setQrTarget] = useState<FreelancerWithProfile | null>(null);
+  const [ratings, setRatings] = useState<FreelancerRatings | null>(null);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
+  const qrBoxRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,6 +98,14 @@ export default function FreelancersPage() {
     })();
   }, []);
 
+  // Custom scoring criteria (R15) for the manual-adjustment picker.
+  useEffect(() => {
+    void (async () => {
+      const { data } = await getScoreSettings();
+      if (data) setCriteria(data.customCriteria ?? []);
+    })();
+  }, []);
+
   const openCreate = () => { setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (f: FreelancerWithProfile) => {
     setForm({
@@ -78,10 +115,13 @@ export default function FreelancersPage() {
       phone: f.phone ?? "",
       cpf: f.profile?.cpf ?? "",
       pixKey: f.profile?.pixKey ?? "",
+      bankName: f.profile?.bankName ?? "",
+      birthDate: f.profile?.birthDate ? f.profile.birthDate.slice(0, 10) : "",
       whatsapp: f.profile?.whatsapp ?? "",
       homeAddress: f.profile?.homeAddress ?? "",
       homeCep: f.profile?.homeCep ?? "",
       restaurantIds: (f.clients ?? []).map((c) => c.id),
+      active: f.status !== "inactive",
     });
     setDialogOpen(true);
   };
@@ -109,6 +149,8 @@ export default function FreelancersPage() {
       phone: form.phone.trim() || null,
       cpf: form.cpf.trim() || null,
       pixKey: form.pixKey.trim() || null,
+      bankName: form.bankName.trim() || null,
+      birthDate: form.birthDate || null,
       whatsapp: form.whatsapp.trim() || null,
       homeAddress: form.homeAddress.trim() || null,
       homeCep: form.homeCep.trim() || null,
@@ -117,8 +159,15 @@ export default function FreelancersPage() {
 
     if (form.id) {
       const { error } = await updateFreelancer(form.id, payload);
+      if (error) { setSaving(false); toast.error(error.message); return; }
+      // Persist the active/inactive toggle only when it actually changed (R17).
+      const original = items.find((x) => x.id === form.id);
+      const wasActive = original ? original.status !== "inactive" : true;
+      if (form.active !== wasActive) {
+        const { error: statusError } = await setFreelancerStatus(form.id, form.active ? "active" : "inactive");
+        if (statusError) { setSaving(false); toast.error(statusError.message); return; }
+      }
       setSaving(false);
-      if (error) { toast.error(error.message); return; }
       toast.success(t("skala.common.updated"));
     } else {
       const { data, error } = await createFreelancer({ ...payload, email: form.email.trim() });
@@ -129,6 +178,91 @@ export default function FreelancersPage() {
       if (data?.tempPassword) setTempPwd(data.tempPassword);
     }
     setDialogOpen(false);
+    void load();
+  };
+
+  const openScore = (f: FreelancerWithProfile) => {
+    setScoreTarget(f);
+    setScorePts("");
+    setScoreReason("");
+    setScoreCriterionId("");
+  };
+
+  const selectedCriterion = scoreCriterionId ? criteria.find((c) => c.id === scoreCriterionId) ?? null : null;
+
+  const submitScore = async () => {
+    if (!scoreTarget) return;
+    if (!selectedCriterion) {
+      // Free-form adjustment: positive-only points + required reason.
+      const pts = Number(scorePts);
+      if (!Number.isFinite(pts) || pts <= 0) { toast.error(t("skala.freelancers.score.invalidPoints")); return; }
+      if (!scoreReason.trim()) { toast.error(t("skala.freelancers.score.reasonRequired")); return; }
+    }
+    setScoreSaving(true);
+    const occurredOn = new Date().toISOString().slice(0, 10);
+    const { error } = await addScoreEvent(
+      selectedCriterion
+        ? {
+            userId: scoreTarget.id, eventType: "manual_adjustment", occurredOn,
+            criterionId: selectedCriterion.id, notes: scoreReason.trim() || undefined,
+          }
+        : {
+            userId: scoreTarget.id, eventType: "manual_adjustment", occurredOn,
+            points: Number(scorePts), notes: scoreReason.trim(),
+          },
+    );
+    setScoreSaving(false);
+    if (error) { toast.error(error.message); return; }
+    const shownPts = selectedCriterion ? selectedCriterion.points : Number(scorePts);
+    toast.success(t("skala.freelancers.score.added", { points: shownPts, name: scoreTarget.name }));
+    setScoreTarget(null);
+    void load();
+  };
+
+  const ratingUrl = (f: FreelancerWithProfile | null) =>
+    f?.profile?.publicRatingToken ? `${window.location.origin}/rate/${f.profile.publicRatingToken}` : "";
+
+  const openQr = async (f: FreelancerWithProfile) => {
+    setQrTarget(f);
+    setRatings(null);
+    setRatingsLoading(true);
+    const { data } = await getFreelancerRatings(f.id);
+    setRatings(data);
+    setRatingsLoading(false);
+  };
+
+  const downloadQr = () => {
+    const canvas = qrBoxRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `qr-${qrTarget?.name ?? "freelancer"}.png`;
+    a.click();
+  };
+
+  const printQr = () => {
+    const canvas = qrBoxRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    const w = window.open("", "_blank", "width=420,height=560");
+    if (!w) return;
+    w.document.write(
+      `<html><head><title>QR ${qrTarget?.name ?? ""}</title></head>` +
+      `<body style="text-align:center;font-family:sans-serif;padding:24px">` +
+      `<h2 style="margin:0 0 4px">${qrTarget?.name ?? ""}</h2>` +
+      `<p style="color:#666;margin:0 0 16px">${t("skala.freelancers.qr.printCaption")}</p>` +
+      `<img src="${dataUrl}" style="width:280px;height:280px"/>` +
+      `</body></html>`,
+    );
+    w.document.close();
+    w.focus();
+    w.print();
+  };
+
+  const reactivate = async (f: FreelancerWithProfile) => {
+    const { error } = await setFreelancerStatus(f.id, "active");
+    if (error) { toast.error(error.message); return; }
+    toast.success(t("skala.freelancers.reactivated", { name: f.name }));
     void load();
   };
 
@@ -167,6 +301,11 @@ export default function FreelancersPage() {
                     <Badge variant={f.role === "visitor" ? "secondary" : "default"}>
                       {f.role === "visitor" ? t("skala.freelancers.visitor") : t("skala.freelancers.member")}
                     </Badge>
+                    {f.status === "inactive" && (
+                      <Badge variant="outline" className="text-rose-600 border-rose-300">
+                        {t("skala.freelancers.inactive")}
+                      </Badge>
+                    )}
                     <span className="flex items-center gap-1 text-amber-500 font-medium text-sm">
                       <Star className="w-4 h-4 fill-current" />
                       {f.profile?.currentScore ?? 0}
@@ -223,6 +362,17 @@ export default function FreelancersPage() {
                   )}
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
+                  {f.status === "inactive" && (
+                    <Button size="sm" variant="outline" className="text-emerald-600" onClick={() => void reactivate(f)}>
+                      <UserCheck className="w-3.5 h-3.5 mr-1" />{t("skala.freelancers.reactivate")}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={() => openScore(f)}>
+                    <Star className="w-3.5 h-3.5 mr-1" />{t("skala.freelancers.score.button")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => void openQr(f)}>
+                    <QrCode className="w-3.5 h-3.5 mr-1" />{t("skala.freelancers.qr.button")}
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => openEdit(f)}>
                     <Pencil className="w-3.5 h-3.5 mr-1" />{t("skala.common.edit")}
                   </Button>
@@ -269,6 +419,18 @@ export default function FreelancersPage() {
                 <Label>{t("skala.auth.pixKey")}</Label>
                 <Input value={form.pixKey} placeholder={t("skala.auth.pixKeyPlaceholder")}
                   onChange={(e) => setForm({ ...form, pixKey: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>{t("skala.freelancers.bankName")}</Label>
+                <Input value={form.bankName} placeholder={t("skala.freelancers.bankNamePlaceholder")}
+                  onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>{t("skala.freelancers.birthDate")}</Label>
+                <Input type="date" value={form.birthDate}
+                  onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -322,10 +484,135 @@ export default function FreelancersPage() {
                 </>
               )}
             </div>
+            {/* Active/inactive toggle (R17) — mirrors the client toggle. Editing only. */}
+            {form.id && (
+              <div className="flex items-center gap-2 pt-3 border-t">
+                <Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} />
+                <Label>{t("skala.common.active")}</Label>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t("skala.common.cancel")}</Button>
             <Button onClick={() => void save()} disabled={saving}>{t("skala.common.save")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manual score adjustment (R2 item 3) — positive-only + required reason */}
+      <Dialog open={scoreTarget !== null} onOpenChange={(o) => { if (!o) setScoreTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Star className="w-5 h-5 text-amber-500" />
+              {scoreTarget ? t("skala.freelancers.score.title", { name: scoreTarget.name }) : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-muted-foreground">
+              {selectedCriterion ? t("skala.freelancers.score.criterionHint") : t("skala.freelancers.score.hint")}
+            </p>
+            {/* Criterion picker (R15) — only when the coordinator has defined active criteria. */}
+            {criteria.some((c) => c.active) && (
+              <div className="space-y-1.5">
+                <Label>{t("skala.freelancers.score.criterionLabel")}</Label>
+                <Select value={scoreCriterionId || "free"} onValueChange={(v) => setScoreCriterionId(v === "free" ? "" : v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">{t("skala.freelancers.score.criterionFree")}</SelectItem>
+                    {criteria.filter((c) => c.active).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.label} ({c.points > 0 ? "+" : ""}{c.points})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>{t("skala.freelancers.score.pointsLabel")}</Label>
+              <Input type="number" step={selectedCriterion ? "0.5" : "1"} inputMode="numeric"
+                disabled={!!selectedCriterion}
+                value={selectedCriterion ? selectedCriterion.points : scorePts}
+                placeholder="0" onChange={(e) => setScorePts(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>
+                {t("skala.freelancers.score.reasonLabel")}
+                {selectedCriterion && <span className="text-muted-foreground font-normal"> · {t("skala.common.optional")}</span>}
+              </Label>
+              <Textarea value={scoreReason} rows={3}
+                placeholder={t("skala.freelancers.score.reasonPlaceholder")}
+                onChange={(e) => setScoreReason(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScoreTarget(null)}>{t("skala.common.cancel")}</Button>
+            <Button onClick={() => void submitScore()} disabled={scoreSaving}>{t("skala.freelancers.score.confirm")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Per-employee QR + customer ratings (R2 item 5) */}
+      <Dialog open={qrTarget !== null} onOpenChange={(o) => { if (!o) setQrTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-primary" />
+              {qrTarget ? t("skala.freelancers.qr.title", { name: qrTarget.name }) : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-muted-foreground">{t("skala.freelancers.qr.hint")}</p>
+            <div ref={qrBoxRef} className="flex flex-col items-center gap-3">
+              {qrTarget?.profile?.publicRatingToken ? (
+                <div className="rounded-xl border border-border bg-white p-4">
+                  <QRCodeCanvas value={ratingUrl(qrTarget)} size={200} includeMargin level="M" />
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-6">{t("skala.freelancers.qr.noToken")}</p>
+              )}
+              {qrTarget?.profile?.publicRatingToken && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={downloadQr}>
+                    <Download className="w-3.5 h-3.5 mr-1" />{t("skala.freelancers.qr.download")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={printQr}>
+                    <Printer className="w-3.5 h-3.5 mr-1" />{t("skala.freelancers.qr.print")}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Ratings summary — informational only, never affects the score */}
+            <div className="rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-foreground">{t("skala.freelancers.qr.ratingsTitle")}</span>
+                {ratings && ratings.count > 0 && (
+                  <span className="flex items-center gap-1 text-sm text-amber-500">
+                    <Star className="w-4 h-4 fill-current" />
+                    {ratings.average.toFixed(1)} · {ratings.count}
+                  </span>
+                )}
+              </div>
+              {ratingsLoading ? (
+                <p className="text-xs text-muted-foreground mt-2">{t("skala.common.loading")}</p>
+              ) : !ratings || ratings.count === 0 ? (
+                <p className="text-xs text-muted-foreground mt-2">{t("skala.freelancers.qr.ratingsEmpty")}</p>
+              ) : (
+                <div className="mt-2 max-h-40 overflow-y-auto space-y-1.5">
+                  {ratings.recent.filter((r) => r.comment).map((r) => (
+                    <div key={r.id} className="text-xs border-b border-border/60 last:border-0 pb-1.5">
+                      <span className="text-amber-500">{"★".repeat(r.stars)}</span>
+                      <span className="text-muted-foreground"> — {r.comment}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQrTarget(null)}>{t("skala.common.close")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

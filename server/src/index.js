@@ -21,6 +21,7 @@ import notificationRoutes from "./routes/notifications.js";
 import extraShiftRoutes from "./routes/extraShifts.js";
 import settingsRoutes from "./routes/settings.js";
 import pushRoutes from "./routes/push.js";
+import publicRatingRoutes from "./routes/publicRatings.js";
 import { startScheduler } from "./scheduler.js";
 
 dotenv.config();
@@ -57,6 +58,8 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/extra-shifts", extraShiftRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/push", pushRoutes);
+// Public, unauthenticated: per-employee QR ratings (R2 item 5).
+app.use("/api/public", publicRatingRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

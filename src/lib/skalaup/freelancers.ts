@@ -31,6 +31,8 @@ export type ProfileInput = {
   photoUrl?: string | null;
   cpf?: string | null;
   pixKey?: string | null;
+  bankName?: string | null;
+  birthDate?: string | null;
   whatsapp?: string | null;
   homeAddress?: string | null;
   homeCep?: string | null;
@@ -60,6 +62,8 @@ export type FreelancerCreateInput = {
   phone?: string | null;
   cpf?: string | null;
   pixKey?: string | null;
+  bankName?: string | null;
+  birthDate?: string | null;
   whatsapp?: string | null;
   homeAddress?: string | null;
   homeCep?: string | null;
@@ -77,6 +81,8 @@ export type FreelancerUpdateInput = {
   phone?: string | null;
   cpf?: string | null;
   pixKey?: string | null;
+  bankName?: string | null;
+  birthDate?: string | null;
   whatsapp?: string | null;
   homeAddress?: string | null;
   homeCep?: string | null;
@@ -85,6 +91,12 @@ export type FreelancerUpdateInput = {
 
 export async function updateFreelancer(userId: string, input: FreelancerUpdateInput): Promise<Result<FreelancerWithProfile | null>> {
   return wrap(api.put<FreelancerWithProfile>(`/freelancers/${userId}`, input), null);
+}
+
+export async function setFreelancerStatus(
+  userId: string, status: "active" | "inactive",
+): Promise<Result<FreelancerWithProfile | null>> {
+  return wrap(api.put<FreelancerWithProfile>(`/freelancers/${userId}/status`, { status }), null);
 }
 
 export async function deleteFreelancer(userId: string): Promise<{ error: { message: string } | null }> {

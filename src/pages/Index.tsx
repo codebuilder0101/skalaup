@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   CalendarCheck, Store, Users, ArrowLeftRight, MessageSquare, DollarSign,
   UserPlus, ShieldCheck, LogIn, LogOut, Clock, BarChart3,
+  Zap, CalendarClock, TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis,
@@ -92,15 +93,43 @@ type StatProps = {
   hint?: string;
   to?: string;
   color: string;
+  // Optional trend badge (R19): percentage change vs the previous period.
+  // `undefined` = no badge; `null` = no comparison available.
+  delta?: number | null;
 };
 
-function Stat({ icon: Icon, label, value, hint, to, color }: StatProps) {
+// Small colored trend chip: ▲ green / ▼ rose / — neutral, next to the value.
+function TrendChip({ delta }: { delta: number | null }) {
+  const { t } = useTranslation();
+  if (delta == null) {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground">
+        <Minus className="w-3 h-3" />{t("skala.dashboard.availabilityNoPrev")}
+      </span>
+    );
+  }
+  const up = delta > 0;
+  const flat = delta === 0;
+  const Icon = flat ? Minus : up ? TrendingUp : TrendingDown;
+  const cls = flat ? "text-muted-foreground" : up ? "text-emerald-600" : "text-rose-600";
+  const sign = up ? "+" : "";
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${cls}`}>
+      <Icon className="w-3 h-3" />{sign}{delta}%
+    </span>
+  );
+}
+
+function Stat({ icon: Icon, label, value, hint, to, color, delta }: StatProps) {
   const inner = (
     <Card className="p-5 h-full hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between">
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">{label}</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{value}</p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <p className="text-2xl font-bold text-foreground">{value}</p>
+            {delta !== undefined && <TrendChip delta={delta} />}
+          </div>
           {hint && <p className="text-xs text-muted-foreground mt-1 truncate">{hint}</p>}
         </div>
         <Icon className={`w-6 h-6 flex-shrink-0 ${color}`} />
@@ -304,6 +333,25 @@ export default function Index() {
                 label={t("skala.dashboard.subscribers")}
                 value={data.subscribers}
                 hint={t("skala.dashboard.thisCycle")}
+              />
+              <Stat
+                icon={CalendarClock} color="text-cyan-600"
+                label={t("skala.dashboard.availabilityTrend")}
+                value={data.availability.current}
+                delta={data.availability.pctChange}
+                hint={data.availability.previous != null
+                  ? t("skala.dashboard.availabilityVsPrev", { n: data.availability.previous })
+                  : t("skala.dashboard.thisCycle")}
+              />
+              <Stat
+                icon={Zap} color="text-amber-500" to="/extra-shifts"
+                label={t("skala.dashboard.extraShifts")}
+                value={data.extraShifts.pending}
+                hint={t("skala.dashboard.extraShiftsHint", {
+                  requested: data.extraShifts.monthRequested,
+                  assigned: data.extraShifts.monthAssigned,
+                  open: data.extraShifts.monthOpen,
+                })}
               />
               <Stat
                 icon={CalendarCheck} color="text-emerald-500" to="/scheduling"

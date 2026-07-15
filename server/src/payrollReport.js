@@ -209,9 +209,11 @@ export async function getMonthReport(monthRefRaw) {
 
   const period = await one(
     `select p.id, p.reference_month::text as "referenceMonth", p.status,
-            p.closed_at as "closedAt", u.name as "closedByName"
+            p.closed_at as "closedAt", cu.name as "closedByName",
+            p.paid_at as "paidAt", pu.name as "paidByName"
        from public.payroll_periods p
-       left join public.users u on u.id = p.closed_by
+       left join public.users cu on cu.id = p.closed_by
+       left join public.users pu on pu.id = p.paid_by
       where p.reference_month = $1`,
     [monthRef],
   );
@@ -221,10 +223,12 @@ export async function getMonthReport(monthRefRaw) {
   if (period) {
     const { rows } = await pool.query(
       `select e.user_id as "userId", u.name as "userName",
+              fp.pix_key as "pixKey", fp.bank_name as "bankName",
               e.restaurant_id as "restaurantId", r.name as "restaurantName",
               e.type, e.amount::float8 as amount, coalesce(e.shift_count, 0)::int as "shiftCount"
          from public.payroll_entries e
          join public.users u on u.id = e.user_id
+         left join public.freelancer_profiles fp on fp.user_id = e.user_id
          left join public.restaurants r on r.id = e.restaurant_id
         where e.period_id = $1`,
       [period.id],
@@ -233,7 +237,11 @@ export async function getMonthReport(monthRefRaw) {
     for (const e of rows) {
       let fr = byUser.get(e.userId);
       if (!fr) {
-        fr = { userId: e.userId, name: e.userName, totals: ZERO(), byRestaurant: new Map() };
+        fr = {
+          userId: e.userId, name: e.userName,
+          pixKey: e.pixKey ?? null, bankName: e.bankName ?? null,
+          totals: ZERO(), byRestaurant: new Map(),
+        };
         byUser.set(e.userId, fr);
       }
       const restKey = e.restaurantId ?? "__none__";
@@ -253,6 +261,8 @@ export async function getMonthReport(monthRefRaw) {
     .map((fr) => ({
       userId: fr.userId,
       name: fr.name,
+      pixKey: fr.pixKey,
+      bankName: fr.bankName,
       totals: finalize(fr.totals),
       byRestaurant: [...fr.byRestaurant.values()]
         .map((rb) => finalize(rb))
@@ -267,8 +277,13 @@ export async function getMonthReport(monthRefRaw) {
           status: period.status,
           closedAt: period.closedAt,
           closedByName: period.closedByName,
+          paidAt: period.paidAt,
+          paidByName: period.paidByName,
         }
-      : { referenceMonth: monthRef, status: "open", closedAt: null, closedByName: null },
+      : {
+          referenceMonth: monthRef, status: "open",
+          closedAt: null, closedByName: null, paidAt: null, paidByName: null,
+        },
     totals: finalize(totals),
     freelancerCount: freelancers.length,
     freelancers,

@@ -23,7 +23,8 @@ async function readConfig() {
   const s = await one(
     `select flexible_availability_points as fa, weekend_target_points as wt,
             furo_cover_points as fc, monthly_target_shifts as mts, swap_scoring_cap as cap,
-            star_cutoffs as cutoffs
+            manual_score_monthly_cap as mscap, star_cutoffs as cutoffs,
+            custom_score_criteria as criteria
        from public.app_settings where id = 1`,
   );
   const points = await getScorePoints(); // defaults + jsonb overrides (non-column keys)
@@ -33,11 +34,16 @@ async function readConfig() {
   points.furo_covered = Number(s?.fc ?? DEFAULT_SCORE_POINTS.furo_covered);
   const cutoffs = Array.isArray(s?.cutoffs) && s.cutoffs.length === 4
     ? s.cutoffs.map(Number) : [...DEFAULT_STAR_CUTOFFS];
+  const customCriteria = (Array.isArray(s?.criteria) ? s.criteria : [])
+    .filter((c) => c && typeof c.id === "string" && typeof c.label === "string")
+    .map((c) => ({ id: c.id, label: c.label, points: Number(c.points) || 0, active: c.active !== false }));
   return {
     points,
     starCutoffs: cutoffs,
     monthlyTargetShifts: Number(s?.mts ?? 10),
     swapScoringCap: Number(s?.cap ?? 3),
+    manualScoreMonthlyCap: Number(s?.mscap ?? 10),
+    customCriteria,
   };
 }
 
@@ -53,7 +59,7 @@ router.get("/score", requireOps, async (_req, res) => {
 
 const isNum = (v) => v != null && Number.isFinite(Number(v));
 
-// PUT /api/settings/score { points?, starCutoffs?, monthlyTargetShifts?, swapScoringCap? }
+// PUT /api/settings/score { points?, starCutoffs?, monthlyTargetShifts?, swapScoringCap?, manualScoreMonthlyCap? }
 router.put("/score", requireOps, async (req, res) => {
   try {
     const b = req.body || {};
@@ -73,6 +79,26 @@ router.put("/score", requireOps, async (req, res) => {
       }
     }
 
+    // Validate custom scoring criteria (R15): array of { id, label, points, active }.
+    // Points may be negative (penalties). Labels are required and trimmed; each id
+    // is stable (client-generated) and de-duplicated.
+    let criteria = null;
+    if (b.customCriteria !== undefined) {
+      if (!Array.isArray(b.customCriteria)) {
+        return res.status(400).json({ error: "customCriteria must be an array." });
+      }
+      const seen = new Set();
+      criteria = [];
+      for (const c of b.customCriteria) {
+        if (!c || typeof c !== "object") continue;
+        const label = String(c.label ?? "").trim();
+        const id = String(c.id ?? "").trim();
+        if (!id || !label || seen.has(id) || !isNum(c.points)) continue;
+        seen.add(id);
+        criteria.push({ id, label, points: Number(c.points), active: c.active !== false });
+      }
+    }
+
     // Split incoming point edits into column-backed vs jsonb-backed.
     const colUpdates = {}; // app_settings column -> value
     const jsonUpdates = {}; // event_type -> value (for score_points jsonb)
@@ -85,6 +111,7 @@ router.put("/score", requireOps, async (req, res) => {
     }
     if (isNum(b.monthlyTargetShifts)) colUpdates.monthly_target_shifts = Math.max(0, Math.round(Number(b.monthlyTargetShifts)));
     if (isNum(b.swapScoringCap)) colUpdates.swap_scoring_cap = Math.max(0, Math.round(Number(b.swapScoringCap)));
+    if (isNum(b.manualScoreMonthlyCap)) colUpdates.manual_score_monthly_cap = Math.max(0, Number(b.manualScoreMonthlyCap));
 
     // Merge jsonb overrides on top of what's stored.
     const existing = (await one(`select score_points from public.app_settings where id = 1`))?.score_points || {};
@@ -94,6 +121,7 @@ router.put("/score", requireOps, async (req, res) => {
     const sets = ["updated_at = now()", "score_points = $1::jsonb"];
     const vals = [JSON.stringify(mergedJson)];
     if (cutoffs) { vals.push(JSON.stringify(cutoffs)); sets.push(`star_cutoffs = $${vals.length}::jsonb`); }
+    if (criteria) { vals.push(JSON.stringify(criteria)); sets.push(`custom_score_criteria = $${vals.length}::jsonb`); }
     for (const [col, v] of Object.entries(colUpdates)) { vals.push(v); sets.push(`${col} = $${vals.length}`); }
     await pool.query(`update public.app_settings set ${sets.join(", ")} where id = 1`, vals);
 

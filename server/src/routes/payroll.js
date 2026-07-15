@@ -84,14 +84,40 @@ router.post("/close", async (req, res) => {
   }
 });
 
-// POST /api/payroll/reopen { month } — reopen a closed folha for corrections.
+// POST /api/payroll/mark-paid { month } — mark a CLOSED folha as paid (R2 item 2).
+// aberta → fechada → paga. The period stays as history; ops can still reopen it.
+router.post("/mark-paid", async (req, res) => {
+  try {
+    const monthRef = normalizeMonthRef((req.body || {}).month);
+    if (!monthRef) return res.status(400).json({ error: "Informe um mês válido (YYYY-MM)." });
+
+    const period = await one(
+      `update public.payroll_periods
+          set status = 'paid', paid_at = now(), paid_by = $2
+        where reference_month = $1 and status = 'closed'
+        returning id`,
+      [monthRef, req.user.sub],
+    );
+    if (!period) {
+      const cur = await one(`select status from public.payroll_periods where reference_month = $1`, [monthRef]);
+      if (cur?.status === "paid") return res.status(409).json({ message: "A folha deste mês já está marcada como paga." });
+      return res.status(409).json({ message: "Feche a folha antes de marcá-la como paga." });
+    }
+    res.json(await getMonthReport(monthRef));
+  } catch (e) {
+    console.error("Payroll mark-paid error:", e.message);
+    res.status(500).json({ error: "Falha ao marcar a folha como paga." });
+  }
+});
+
+// POST /api/payroll/reopen { month } — reopen a closed/paid folha for corrections.
 router.post("/reopen", async (req, res) => {
   try {
     const monthRef = normalizeMonthRef((req.body || {}).month);
     if (!monthRef) return res.status(400).json({ error: "Informe um mês válido (YYYY-MM)." });
     await pool.query(
       `update public.payroll_periods
-          set status = 'open', closed_at = null, closed_by = null
+          set status = 'open', closed_at = null, closed_by = null, paid_at = null, paid_by = null
         where reference_month = $1`,
       [monthRef],
     );

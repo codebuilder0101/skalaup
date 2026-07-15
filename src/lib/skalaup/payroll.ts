@@ -4,7 +4,7 @@ import type { Result } from "./types";
 // Financial module (§8, §12) — monthly payroll report & close.
 // Backed by server/routes/payroll.js.
 
-export type PayrollStatus = "open" | "closed";
+export type PayrollStatus = "open" | "closed" | "paid";
 
 // Per-type money buckets shared by freelancer totals and each restaurant breakdown.
 export interface PayrollBucket {
@@ -25,6 +25,8 @@ export interface PayrollRestaurantLine extends PayrollBucket {
 export interface PayrollFreelancer {
   userId: string;
   name: string;
+  pixKey: string | null;
+  bankName: string | null;
   totals: PayrollBucket;
   byRestaurant: PayrollRestaurantLine[];
 }
@@ -34,6 +36,8 @@ export interface PayrollPeriod {
   status: PayrollStatus;
   closedAt: string | null;
   closedByName: string | null;
+  paidAt: string | null;
+  paidByName: string | null;
 }
 
 export interface PayrollReport {
@@ -69,7 +73,10 @@ async function wrapMaybe<T>(p: Promise<T>): Promise<Result<T | null>> {
 }
 
 const EMPTY_REPORT = (month: string): PayrollReport => ({
-  period: { referenceMonth: `${month}-01`, status: "open", closedAt: null, closedByName: null },
+  period: {
+    referenceMonth: `${month}-01`, status: "open",
+    closedAt: null, closedByName: null, paidAt: null, paidByName: null,
+  },
   totals: {
     shiftPay: 0, weekendBonus: 0, lateDiscount: 0, noShowDiscount: 0,
     manualAdjustment: 0, shiftCount: 0, net: 0,
@@ -93,6 +100,10 @@ export async function closePayroll(month: string): Promise<Result<PayrollReport 
 
 export async function reopenPayroll(month: string): Promise<Result<PayrollReport | null>> {
   return wrapMaybe(api.post<PayrollReport>("/payroll/reopen", { month }));
+}
+
+export async function markPaidPayroll(month: string): Promise<Result<PayrollReport | null>> {
+  return wrapMaybe(api.post<PayrollReport>("/payroll/mark-paid", { month }));
 }
 
 export async function listPayrollEntries(month: string, userId?: string): Promise<Result<PayrollEntry[]>> {

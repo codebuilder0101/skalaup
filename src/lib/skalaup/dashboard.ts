@@ -41,6 +41,8 @@ export interface CoordinatorDashboard {
   swaps: number;
   feedback: number;
   approvals: number;
+  extraShifts: { pending: number; monthRequested: number; monthAssigned: number; monthOpen: number };
+  availability: { current: number; previous: number | null; pctChange: number | null };
   finance: { shifts: number; estimated: number; weekendShifts: number };
   todaySchedule: TodayShift[];
   shiftsTrend: ShiftsTrendPoint[];

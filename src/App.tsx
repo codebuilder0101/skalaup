@@ -26,6 +26,7 @@ import FeedbackPage from "./pages/FeedbackPage";
 import FinancialPage from "./pages/FinancialPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import ExtraShiftsPage from "./pages/ExtraShiftsPage";
+import PublicRatingPage from "./pages/PublicRatingPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import NotFound from "./pages/NotFound";
 
@@ -40,6 +41,8 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/auth" element={<AuthPage />} />
+            {/* Public, unauthenticated per-employee rating (R2 item 5) */}
+            <Route path="/rate/:token" element={<PublicRatingPage />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
             <Route path="/dashboard" element={<ProtectedRoute pathKey="/dashboard"><Index /></ProtectedRoute>} />

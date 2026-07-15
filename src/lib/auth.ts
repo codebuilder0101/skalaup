@@ -34,15 +34,16 @@ export const roleHomePath: Record<UserRole, string> = {
   visitor: "/availability",
 };
 
-// Operations the coordinator runs (NO user approvals).
+// Operations the coordinator runs (NO user approvals). "Meu Desempenho"
+// (/performance) is a personal score for people who work shifts — coordinators
+// work in the office and aren't scheduled/scored, so they don't get it either.
 const COORDINATOR_PATHS = [
   "/dashboard", "/scheduling", "/restaurants", "/freelancers", "/demand", "/availability",
-  "/attendance", "/swaps", "/extra-shifts", "/feedback", "/performance", "/financial",
+  "/attendance", "/swaps", "/extra-shifts", "/feedback", "/financial",
   "/notifications", "/settings", "/profile",
 ];
-// Administrator = everything the coordinator can do PLUS user approvals, MINUS the
-// personal "Meu Desempenho" page (admins have no personal score to show — R5).
-const ADMINISTRATOR_PATHS = [...COORDINATOR_PATHS.filter((p) => p !== "/performance"), "/approvals"];
+// Administrator = everything the coordinator can do PLUS user approvals.
+const ADMINISTRATOR_PATHS = [...COORDINATOR_PATHS, "/approvals"];
 const MANAGER_PATHS = ["/dashboard", "/today", "/extra-shifts", "/feedback", "/notifications", "/settings", "/profile"];
 const FREELANCER_PATHS = [
   "/my-schedule", "/availability", "/vagas", "/checkin", "/swaps", "/performance", "/notifications", "/settings", "/profile",

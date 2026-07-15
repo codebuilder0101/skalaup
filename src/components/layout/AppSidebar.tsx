@@ -62,9 +62,10 @@ const navGroupsConfig: NavGroup[] = [
   {
     labelKey: "nav.insights",
     items: [
-      // "Meu Desempenho" is a personal score view — hidden from administrators (R5);
-      // coordinators keep it for the operation, freelancers see their own.
-      { icon: Star, labelKey: "nav.performance", path: "/performance", roles: ["coordinator", ...FREELANCER] },
+      // "Meu Desempenho" is a personal score for people who work shifts — only
+      // freelancers/visitors. Coordinators and admins work in the office, aren't
+      // scheduled/scored, so they don't see it (they get operational KPIs instead).
+      { icon: Star, labelKey: "nav.performance", path: "/performance", roles: FREELANCER },
       { icon: DollarSign, labelKey: "nav.financial", path: "/financial", roles: COORD },
     ],
   },

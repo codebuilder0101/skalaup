@@ -1561,7 +1561,9 @@
     },
     "availability": {
       "title": "My Availability",
+      "titleOps": "Team availability",
       "subtitle": "Mark the shifts and clients you can work in",
+      "subtitleOps": "Open or close the availability window for the team to submit their shifts.",
       "selectedCount": "shifts marked",
       "closedNotice": "The submission window is closed. Ask the coordinator to reopen it.",
       "noCycle": "No availability cycle is open right now.",

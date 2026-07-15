@@ -1561,7 +1561,9 @@
     },
     "availability": {
       "title": "Minha Disponibilidade",
+      "titleOps": "Disponibilidade da equipe",
       "subtitle": "Marque os turnos e clientes em que você pode trabalhar em",
+      "subtitleOps": "Abra ou feche a janela de disponibilidade para a equipe lançar os turnos.",
       "selectedCount": "turnos marcados",
       "closedNotice": "O período de lançamento está encerrado. Fale com a coordenadora para reabrir.",
       "noCycle": "Nenhum ciclo de disponibilidade disponível no momento.",

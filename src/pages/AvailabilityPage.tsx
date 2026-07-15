@@ -256,7 +256,9 @@ export default function AvailabilityPage() {
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("skala.availability.title")}</h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                    {t(isOps ? "skala.availability.titleOps" : "skala.availability.title")}
+                  </h1>
                   {cycle && (
                     <Badge
                       variant="outline"
@@ -270,8 +272,14 @@ export default function AvailabilityPage() {
                   )}
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {t("skala.availability.subtitle")}
-                  {cycle && <span className="ml-1 font-medium text-foreground capitalize">{monthLabel}</span>}
+                  {isOps ? (
+                    t("skala.availability.subtitleOps")
+                  ) : (
+                    <>
+                      {t("skala.availability.subtitle")}
+                      {cycle && <span className="ml-1 font-medium text-foreground capitalize">{monthLabel}</span>}
+                    </>
+                  )}
                 </p>
               </div>
             </div>

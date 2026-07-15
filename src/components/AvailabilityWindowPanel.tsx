@@ -54,16 +54,19 @@ export function AvailabilityWindowPanel({ cycle, onChange }: Props) {
   useEffect(() => {
     if (cycle && cycle.id !== syncedId.current) {
       syncedId.current = cycle.id;
+      const d = defaultsFor(cycle.referenceMonth.slice(0, 7));
       setMonth(cycle.referenceMonth.slice(0, 7));
-      setOpensDate(cycle.opensAt.slice(0, 10));
-      setClosesDate(cycle.closesAt.slice(0, 10));
+      setOpensDate(cycle.opensAt?.slice(0, 10) ?? d.opens);
+      setClosesDate(cycle.closesAt?.slice(0, 10) ?? d.closes);
     }
   }, [cycle]);
 
   const isOpen = cycle?.status === "open";
-  const fmt = (iso: string) =>
-    new Intl.DateTimeFormat(lng, { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
-      .format(new Date(`${iso.slice(0, 10)}T00:00:00Z`));
+  const fmt = (iso: string | null | undefined) =>
+    iso
+      ? new Intl.DateTimeFormat(lng, { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
+          .format(new Date(`${iso.slice(0, 10)}T00:00:00Z`))
+      : "";
 
   const loadMonth = async (ym: string) => {
     setMonth(ym);

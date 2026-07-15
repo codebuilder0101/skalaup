@@ -31,7 +31,7 @@ async function upsertUser({ name, email, password, role }) {
 // Extra demo freelancers with varying scores so candidate ranking is visible.
 const DEMO_FREELANCERS = [
   { name: "Brincador Eduardo", email: "edu@skalaup.app",   score: 42, transport: "own_car",        exp: "3 anos de recreação" },
-  { name: "Brincadora Fernanda", email: "fe@skalaup.app",  score: 31, transport: "public_transit", exp: "Animação de festas" },
+  { name: "Brincadora Fernanda", email: "fe@skalaup.app",  score: 31, transport: "metro", exp: "Animação de festas" },
   { name: "Brincador Gabriel", email: "gabriel@skalaup.app", score: 18, transport: "motorcycle",   exp: "Monitor de colônia de férias" },
   { name: "Brincadora Helena", email: "helena@skalaup.app", score: 55, transport: "own_car",        exp: "5 anos, líder de equipe" },
   { name: "Brincador Igor",    email: "igor@skalaup.app",   score: 7,  transport: "bike",            exp: "Iniciante" },
@@ -209,7 +209,7 @@ async function main() {
   // Freelancer / visitor → profile "ficha".
   const profiles = [
     { email: "freelancer@skalaup.app", member: "member",  transport: "own_car",        exp: "2 anos de recreação infantil" },
-    { email: "visitor@skalaup.app",    member: "visitor", transport: "public_transit", exp: "Recrutamento pontual" },
+    { email: "visitor@skalaup.app",    member: "visitor", transport: "metro", exp: "Recrutamento pontual" },
   ];
   for (const p of profiles) {
     const u = created[p.email];

@@ -40,6 +40,7 @@ export interface CoordinatorDashboard {
   today: TodayCounts;
   swaps: number;
   feedback: number;
+  evaluations: number;
   approvals: number;
   extraShifts: { pending: number; monthRequested: number; monthAssigned: number; monthOpen: number };
   availability: { current: number; previous: number | null; pctChange: number | null };

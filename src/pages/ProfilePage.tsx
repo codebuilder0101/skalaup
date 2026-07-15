@@ -21,7 +21,7 @@ import {
   maskCpf, maskCep, maskPhone, isValidCpf, isValidCep, isValidPhone,
 } from "@/lib/br-format";
 
-const TRANSPORTS: Transport[] = ["own_car", "motorcycle", "public_transit", "bike", "walk", "other"];
+const TRANSPORTS: Transport[] = ["own_car", "motorcycle", "metro", "bus", "metro_bus", "bike", "other"];
 
 export default function ProfilePage() {
   const { t } = useTranslation();

@@ -50,6 +50,17 @@ async function coordinatorDashboard(role) {
     `select count(*)::int as pending from public.manager_feedback where status = 'pending_validation'`,
   );
 
+  // Evaluations received this month (client item 9): gestor feedback via the app
+  // + client ratings via the public QR page. A volume metric ("quantas por mês").
+  const evaluations = await one(
+    `select (
+       (select count(*) from public.manager_feedback
+          where date_trunc('month', created_at) = date_trunc('month', current_date))
+     + (select count(*) from public.public_ratings
+          where date_trunc('month', created_at) = date_trunc('month', current_date))
+     )::int as month`,
+  );
+
   const approvals = await one(
     `select count(*)::int as pending from public.users where status = 'pending'`,
   );
@@ -156,6 +167,7 @@ async function coordinatorDashboard(role) {
     today,
     swaps: swaps.pending,
     feedback: feedback.pending,
+    evaluations: evaluations.month,
     approvals: approvals.pending,
     extraShifts: {
       pending: extraRow.pending,

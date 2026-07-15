@@ -17,11 +17,11 @@ const RESTAURANTS = [
 const FREELANCERS = [
   { name: "Beatriz Almeida",   email: "beatriz.almeida@skalaup.com.br",   password: "Beatriz@2026",  transport: "own_car",        experience: "3 anos de recreação infantil e festas", score: 42, level: 4 },
   { name: "Rafael Souza",      email: "rafael.souza@skalaup.com.br",      password: "Rafael@2026",   transport: "motorcycle",     experience: "2 anos como monitor de buffet",         score: 28, level: 3 },
-  { name: "Juliana Ferreira",  email: "juliana.ferreira@skalaup.com.br",  password: "Juliana@2026",  transport: "public_transit", experience: "Recreadora, 4 anos em eventos",         score: 55, level: 5 },
+  { name: "Juliana Ferreira",  email: "juliana.ferreira@skalaup.com.br",  password: "Juliana@2026",  transport: "metro", experience: "Recreadora, 4 anos em eventos",         score: 55, level: 5 },
   { name: "Lucas Oliveira",    email: "lucas.oliveira@skalaup.com.br",    password: "Lucas@2026",    transport: "bike",           experience: "1 ano de experiência em recreação",     score: 12, level: 2 },
   { name: "Camila Rodrigues",  email: "camila.rodrigues@skalaup.com.br",  password: "Camila@2026",   transport: "own_car",        experience: "Pedagoga, 5 anos com crianças",         score: 61, level: 5 },
-  { name: "Thiago Santos",     email: "thiago.santos@skalaup.com.br",     password: "Thiago@2026",   transport: "public_transit", experience: "Monitor de festas, 2 anos",             score: 20, level: 3 },
-  { name: "Mariana Costa",     email: "mariana.costa@skalaup.com.br",     password: "Mariana@2026",  transport: "walk",           experience: "Recreadora iniciante",                  score: 6,  level: 1 },
+  { name: "Thiago Santos",     email: "thiago.santos@skalaup.com.br",     password: "Thiago@2026",   transport: "metro", experience: "Monitor de festas, 2 anos",             score: 20, level: 3 },
+  { name: "Mariana Costa",     email: "mariana.costa@skalaup.com.br",     password: "Mariana@2026",  transport: "other",           experience: "Recreadora iniciante",                  score: 6,  level: 1 },
 ];
 const MANAGERS = [
   { name: "Patrícia Gomes",  email: "patricia.gomes@skalaup.com.br",  password: "Patricia@2026" },

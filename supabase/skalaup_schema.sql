@@ -165,7 +165,7 @@ create table if not exists public.freelancer_profiles (
   home_latitude      numeric(9,6),
   home_longitude     numeric(9,6),
   transport          text check (transport in
-                       ('own_car','motorcycle','public_transit','bike','walk','other')),
+                       ('own_car','motorcycle','metro','bus','metro_bus','bike','other')),
   experience         text,
   hire_date          date,
 
@@ -899,6 +899,17 @@ alter table public.extra_shift_requests drop constraint if exists extra_shift_re
 alter table public.extra_shift_requests
   add constraint extra_shift_requests_status_check
   check (status in ('pending','assigned','opened','filled','rejected','cancelled'));
+
+-- Item 6 — transport options reworked: metrô/ônibus/metrô+ônibus replace the generic
+-- 'public_transit'; 'walk' (a pé) dropped. Drop the old check FIRST (the new values
+-- would violate it), then reclassify existing rows (public_transit -> metro per client;
+-- walk -> other), then re-add the tightened check.
+alter table public.freelancer_profiles drop constraint if exists freelancer_profiles_transport_check;
+update public.freelancer_profiles set transport = 'metro' where transport = 'public_transit';
+update public.freelancer_profiles set transport = 'other' where transport = 'walk';
+alter table public.freelancer_profiles
+  add constraint freelancer_profiles_transport_check
+  check (transport in ('own_car','motorcycle','metro','bus','metro_bus','bike','other'));
 
 -- =============================================================================
 -- ROW LEVEL SECURITY

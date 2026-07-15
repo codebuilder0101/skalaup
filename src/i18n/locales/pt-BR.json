@@ -1778,9 +1778,10 @@
     "transport": {
       "own_car": "Carro próprio",
       "motorcycle": "Moto",
-      "public_transit": "Transporte público",
+      "metro": "Metrô",
+      "bus": "Ônibus",
+      "metro_bus": "Metrô + ônibus",
       "bike": "Bicicleta",
-      "walk": "A pé",
       "other": "Outro"
     },
     "placeholder": {
@@ -1856,6 +1857,8 @@
       "plusMore": "+{{n}} mais",
       "subscribers": "Inscritos na disponibilidade",
       "thisCycle": "neste ciclo",
+      "thisMonth": "neste mês",
+      "evaluations": "Avaliações recebidas",
       "availabilityTrend": "Disponibilidade da equipe",
       "availabilityVsPrev": "{{n}} no ciclo anterior",
       "availabilityNoPrev": "sem histórico",

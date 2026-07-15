@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   CalendarCheck, Store, Users, ArrowLeftRight, MessageSquare, DollarSign,
   UserPlus, ShieldCheck, LogIn, LogOut, Clock, BarChart3,
-  Zap, CalendarClock, TrendingUp, TrendingDown, Minus,
+  Zap, CalendarClock, TrendingUp, TrendingDown, Minus, Star,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis,
@@ -366,6 +366,12 @@ export default function Index() {
                 label={t("skala.dashboard.feedback")}
                 value={data.feedback}
                 hint={t("skala.dashboard.toValidate")}
+              />
+              <Stat
+                icon={Star} color="text-yellow-500"
+                label={t("skala.dashboard.evaluations")}
+                value={data.evaluations}
+                hint={t("skala.dashboard.thisMonth")}
               />
               {canAccess("/approvals") && (
                 <Stat

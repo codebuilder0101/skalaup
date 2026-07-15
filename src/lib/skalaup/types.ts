@@ -9,7 +9,7 @@ export type UserRole = "freelancer" | "visitor" | "restaurant_manager" | "coordi
 export type UserStatus = "active" | "inactive" | "pending";
 export type MemberType = "member" | "visitor";
 export type Transport =
-  | "own_car" | "motorcycle" | "public_transit" | "bike" | "walk" | "other";
+  | "own_car" | "motorcycle" | "metro" | "bus" | "metro_bus" | "bike" | "other";
 export type ShiftType = "lunch" | "dinner";
 export type CycleStatus = "open" | "closed" | "published";
 export type SubmissionStatus = "submitted" | "cancelled";

@@ -62,7 +62,7 @@ export default function ExtraShiftsPage() {
   const statusBadge = (status: ExtraShiftStatus) => {
     const tone: Record<ExtraShiftStatus, string> = {
       pending: "text-amber-600", assigned: "text-emerald-600", opened: "text-blue-600",
-      rejected: "text-rose-600", cancelled: "text-muted-foreground",
+      filled: "text-emerald-600", rejected: "text-rose-600", cancelled: "text-muted-foreground",
     };
     return <Badge variant="secondary" className={tone[status]}>{t(`skala.extraShifts.status.${status}`)}</Badge>;
   };
@@ -78,6 +78,10 @@ export default function ExtraShiftsPage() {
 
   const submitRequest = async () => {
     if (!date || date < todayStr()) { toast.error(t("skala.extraShifts.pastDate")); return; }
+    // A shift one calendar day out (or sooner) is always under 48h — block early.
+    // The exact 48h boundary is enforced server-side in the restaurant's timezone.
+    const minLead = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+    if (date < minLead) { toast.error(t("skala.extraShifts.leadTimeError")); return; }
     setBusy("request");
     const { error } = await requestExtraShift({ date, shiftType: shift, headcount, reason: reason.trim() || undefined });
     setBusy(null);

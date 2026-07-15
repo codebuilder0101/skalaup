@@ -204,6 +204,11 @@ function ScoreConfigCard() {
           <Input type="number" min={0} className="w-24" value={cfg.manualScoreMonthlyCap}
             onChange={(e) => setCfg((c) => (c ? { ...c, manualScoreMonthlyCap: Number(e.target.value) || 0 } : c))} />
         </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-foreground" title={t("skala.settings.score.lateDiscountHint")}>{t("skala.settings.score.lateDiscount")}</span>
+          <Input type="number" min={0} step="0.01" className="w-24" value={cfg.lateDiscountAmount}
+            onChange={(e) => setCfg((c) => (c ? { ...c, lateDiscountAmount: Number(e.target.value) || 0 } : c))} />
+        </div>
       </div>
 
       {/* Custom criteria (R15) — freely-defined manual scoring rules. */}

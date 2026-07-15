@@ -17,6 +17,7 @@ export interface ScoreSettings {
   monthlyTargetShifts: number;
   swapScoringCap: number;
   manualScoreMonthlyCap: number;
+  lateDiscountAmount: number;
   customCriteria: CustomCriterion[];
 }
 

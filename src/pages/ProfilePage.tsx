@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { UserCircle, Star, Mail, Shield } from "lucide-react";
+import { UserCircle, Star, Mail, Shield, Camera, Loader2 } from "lucide-react";
+import { uploadProfilePhoto } from "@/lib/skalaup/uploads";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
@@ -38,8 +39,15 @@ export default function ProfilePage() {
   const [homeAddress, setHomeAddress] = useState("");
   const [cpf, setCpf] = useState("");
   const [pixKey, setPixKey] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [homeCep, setHomeCep] = useState("");
+
+  // Profile photo (R20 item A3) — uploaded to the server, saved as a URL.
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const isFreelancer = user?.role === "freelancer" || user?.role === "visitor";
 
@@ -65,6 +73,19 @@ export default function ProfilePage() {
     }
   };
 
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setPhotoUploading(true);
+    const { url, error } = await uploadProfilePhoto(file);
+    setPhotoUploading(false);
+    if (error === "invalid") { toast.error(t("skala.profile.photoInvalid")); return; }
+    if (error === "too_large") { toast.error(t("skala.profile.photoTooLarge")); return; }
+    if (error || !url) { toast.error(t("skala.profile.photoUploadError")); return; }
+    setPhotoUrl(url); // persisted to the profile when the user hits Save
+  };
+
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -78,8 +99,11 @@ export default function ProfilePage() {
       setHomeAddress(me.profile?.homeAddress ?? "");
       setCpf(me.profile?.cpf ?? "");
       setPixKey(me.profile?.pixKey ?? "");
+      setBankName(me.profile?.bankName ?? "");
+      setBirthDate(me.profile?.birthDate ?? "");
       setWhatsapp(me.profile?.whatsapp ?? "");
       setHomeCep(me.profile?.homeCep ?? "");
+      setPhotoUrl(me.profile?.photoUrl ?? null);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -101,6 +125,8 @@ export default function ProfilePage() {
     try {
       await api.put("/auth/me", { name: name.trim(), phone: phone.trim() });
       if (isFreelancer) {
+        // NB: the backend upserts every ficha column, so ALL of them must be sent —
+        // omitting photoUrl/bankName/birthDate here would null them out (R20 A0 fix).
         await api.put(`/freelancers/${user.id}/profile`, {
           memberType: data?.profile?.memberType ?? (user.role === "visitor" ? "visitor" : "member"),
           transport: transport || null,
@@ -108,8 +134,11 @@ export default function ProfilePage() {
           homeAddress: homeAddress.trim() || null,
           cpf: cpf.trim() || null,
           pixKey: pixKey.trim() || null,
+          bankName: bankName.trim() || null,
+          birthDate: birthDate || null,
           whatsapp: whatsapp.trim() || null,
           homeCep: homeCep.trim() || null,
+          photoUrl: photoUrl || null,
         });
       }
       await refresh();
@@ -146,8 +175,27 @@ export default function ProfilePage() {
             {/* Identity summary */}
             <Card className="p-5">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xl font-bold">
-                  {(user?.name ?? "?").trim().charAt(0).toUpperCase()}
+                <div className="relative">
+                  {photoUrl ? (
+                    <img src={photoUrl} alt=""
+                      className="w-14 h-14 rounded-full object-cover border border-border" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xl font-bold">
+                      {(user?.name ?? "?").trim().charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  {isFreelancer && (
+                    <>
+                      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
+                        className="hidden" onChange={(e) => void onPickPhoto(e)} />
+                      <button type="button" onClick={() => fileRef.current?.click()}
+                        disabled={photoUploading}
+                        title={t("skala.profile.photoChange")}
+                        className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow ring-2 ring-background disabled:opacity-60">
+                        {photoUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
+                      </button>
+                    </>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground">{user?.name}</p>
@@ -234,6 +282,17 @@ export default function ProfilePage() {
                     <Label>{t("skala.auth.pixKey")}</Label>
                     <Input value={pixKey} placeholder={t("skala.auth.pixKeyPlaceholder")}
                       onChange={(e) => setPixKey(e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>{t("skala.profile.bank")}</Label>
+                    <Input value={bankName} placeholder={t("skala.profile.bankPlaceholder")}
+                      onChange={(e) => setBankName(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("skala.profile.birthDate")}</Label>
+                    <Input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-1.5">

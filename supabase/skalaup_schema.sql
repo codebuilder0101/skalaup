@@ -639,7 +639,7 @@ alter table public.notifications add constraint notifications_type_check check (
   'coverage_deficit','availability_reminder','schedule_conflict',
   'weekday_eligibility','manager_checkin_checkout','feedback_received',
   'feedback_request','schedule_published','schedule_assigned','schedule_removed',
-  'shift_reminder','waitlist_opening'));
+  'shift_reminder','waitlist_opening','birthday','inactivity_warning','profile_inactivated'));
 
 -- =============================================================================
 -- 23. DEVICE TOKENS (§14) — push to iOS / Android / web
@@ -877,6 +877,28 @@ alter table public.notifications add constraint notifications_type_check check (
   'weekday_eligibility','manager_checkin_checkout','feedback_received',
   'feedback_request','schedule_published','schedule_assigned','schedule_removed',
   'shift_reminder','waitlist_opening','birthday','inactivity_warning','profile_inactivated'));
+
+-- =============================================================================
+-- R20 (client round 2026-07): schema drift fixes + extra-shift confirmation flow.
+-- =============================================================================
+
+-- Hygiene: these two app_settings columns are read/written by the scoring engine
+-- (settings.js, attendance.js) but were missing from the base table above. Add them
+-- idempotently so a fresh provision matches production.
+alter table public.app_settings add column if not exists furo_cover_points   numeric(6,2) not null default 3;
+alter table public.app_settings add column if not exists weekend_target_points numeric(6,2) not null default 5;
+
+-- E3 — an extra shift opened as a vaga links back to its request, so that when a
+-- freelancer actually claims the vaga we can confirm to the requesting manager.
+alter table public.demand_overrides
+  add column if not exists extra_shift_request_id uuid references public.extra_shift_requests(id) on delete set null;
+
+-- E3 — 'filled' extends the extra-shift lifecycle: a vaga-opened request becomes
+-- 'filled' the moment someone is actually scheduled into it.
+alter table public.extra_shift_requests drop constraint if exists extra_shift_requests_status_check;
+alter table public.extra_shift_requests
+  add constraint extra_shift_requests_status_check
+  check (status in ('pending','assigned','opened','filled','rejected','cancelled'));
 
 -- =============================================================================
 -- ROW LEVEL SECURITY

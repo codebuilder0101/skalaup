@@ -22,13 +22,21 @@ import extraShiftRoutes from "./routes/extraShifts.js";
 import settingsRoutes from "./routes/settings.js";
 import pushRoutes from "./routes/push.js";
 import publicRatingRoutes from "./routes/publicRatings.js";
+import uploadRoutes from "./routes/uploads.js";
+import { UPLOAD_DIR } from "./uploads.js";
 import { startScheduler } from "./scheduler.js";
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Limit raised to accommodate base64 profile-photo data URLs (R20 item A3).
+app.use(express.json({ limit: "8mb" }));
+
+// Uploaded files (profile photos) live on disk and are served statically; the
+// upload endpoint (POST /photo) is mounted on the same prefix below it.
+app.use("/api/uploads", express.static(UPLOAD_DIR));
+app.use("/api/uploads", uploadRoutes);
 
 app.get("/api/health", async (_req, res) => {
   try {

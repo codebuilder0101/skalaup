@@ -40,8 +40,9 @@ const COORDINATOR_PATHS = [
   "/attendance", "/swaps", "/extra-shifts", "/feedback", "/performance", "/financial",
   "/notifications", "/settings", "/profile",
 ];
-// Administrator = everything the coordinator can do PLUS user approvals.
-const ADMINISTRATOR_PATHS = [...COORDINATOR_PATHS, "/approvals"];
+// Administrator = everything the coordinator can do PLUS user approvals, MINUS the
+// personal "Meu Desempenho" page (admins have no personal score to show — R5).
+const ADMINISTRATOR_PATHS = [...COORDINATOR_PATHS.filter((p) => p !== "/performance"), "/approvals"];
 const MANAGER_PATHS = ["/dashboard", "/today", "/extra-shifts", "/feedback", "/notifications", "/settings", "/profile"];
 const FREELANCER_PATHS = [
   "/my-schedule", "/availability", "/vagas", "/checkin", "/swaps", "/performance", "/notifications", "/settings", "/profile",

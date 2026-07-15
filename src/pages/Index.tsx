@@ -288,7 +288,9 @@ export default function Index() {
         ) : isManagerDashboard(data) ? (
           /* ---------- Restaurant manager: single-restaurant view ---------- */
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Gestor panel: only Cliente, Turnos de hoje and Escala de hoje (R20 —
+                the "Inscritos na disponibilidade" card was removed per client request). */}
+            <div className="grid gap-4 sm:grid-cols-2">
               <Stat
                 icon={Store} color="text-orange-500"
                 label={t("skala.dashboard.myRestaurant")}
@@ -296,12 +298,6 @@ export default function Index() {
                 hint={data.restaurants.length > 1
                   ? t("skala.dashboard.plusMore", { n: data.restaurants.length - 1 })
                   : (data.restaurants[0]?.address ?? undefined)}
-              />
-              <Stat
-                icon={Users} color="text-blue-500"
-                label={t("skala.dashboard.subscribers")}
-                value={data.subscribers}
-                hint={t("skala.dashboard.thisCycle")}
               />
               <Stat
                 icon={CalendarCheck} color="text-emerald-500"

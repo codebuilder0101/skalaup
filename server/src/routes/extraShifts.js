@@ -112,6 +112,19 @@ router.post("/", async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
+    // R20 E2: block requests with less than 48h lead time to the shift start
+    // (computed in the restaurant's timezone).
+    const startTimes = await resolveShiftTimes(restaurantId, b.shiftType);
+    const lead = await one(
+      `select extract(epoch from (
+         (($1::date + $2::time) at time zone coalesce((select timezone from public.restaurants where id = $3), 'America/Sao_Paulo'))
+         - now())) as secs`,
+      [b.date, startTimes.startTime, restaurantId],
+    );
+    if (Number(lead?.secs ?? 0) < 48 * 3600) {
+      return res.status(400).json({ error: "lead_time", message: "Turnos extras exigem no mínimo 48h de antecedência." });
+    }
+
     const row = await one(
       `insert into public.extra_shift_requests
          (restaurant_id, date, shift_type, headcount, reason, requested_by)
@@ -201,6 +214,15 @@ router.post("/:id/assign", async (req, res) => {
       body: `Turno extra de ${shiftPt} em ${e.date}. Os pontos entram após você trabalhar o turno.`,
       data: { assignmentId: a.id, date: e.date, shiftType: e.shiftType },
     });
+    // R20 E3: confirm to the requesting manager now that someone is actually scheduled.
+    if (e.requestedBy) {
+      await notify({
+        recipientUserId: e.requestedBy, type: "coverage_deficit",
+        title: "Turno extra confirmado",
+        body: `${u.name} foi escalado no seu turno extra de ${shiftPt} em ${e.date}.`,
+        data: { extraShiftId: e.id, path: "/extra-shifts" },
+      });
+    }
     res.status(201).json({ status: "assigned", assignmentId: a.id });
   } catch (e2) {
     console.error("extra-shift assign error:", e2.message);
@@ -221,13 +243,16 @@ router.post("/:id/open", async (req, res) => {
       `select count(*)::int as n from public.schedule_assignments
         where restaurant_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'`,
       [e.restaurantId, e.date, e.shiftType])).n;
+    // Link the override back to this request (R20 E3) so the vaga-claim path can
+    // confirm to the manager once someone actually takes it.
     await pool.query(
-      `insert into public.demand_overrides (restaurant_id, date, shift_type, required_count, reason, is_extra, created_by)
-       values ($1,$2,$3,$4,$5,true,$6)
+      `insert into public.demand_overrides (restaurant_id, date, shift_type, required_count, reason, is_extra, extra_shift_request_id, created_by)
+       values ($1,$2,$3,$4,$5,true,$6,$7)
        on conflict (restaurant_id, date, shift_type) do update set
          required_count = greatest(public.demand_overrides.required_count, excluded.required_count),
-         is_extra = true, reason = coalesce(excluded.reason, public.demand_overrides.reason)`,
-      [e.restaurantId, e.date, e.shiftType, filled + e.headcount, e.reason || "Turno extra", req.user.sub],
+         is_extra = true, reason = coalesce(excluded.reason, public.demand_overrides.reason),
+         extra_shift_request_id = coalesce(excluded.extra_shift_request_id, public.demand_overrides.extra_shift_request_id)`,
+      [e.restaurantId, e.date, e.shiftType, filled + e.headcount, e.reason || "Turno extra", e.id, req.user.sub],
     );
     await pool.query(
       `update public.extra_shift_requests

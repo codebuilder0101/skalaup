@@ -62,7 +62,9 @@ const navGroupsConfig: NavGroup[] = [
   {
     labelKey: "nav.insights",
     items: [
-      { icon: Star, labelKey: "nav.performance", path: "/performance", roles: [...COORD, ...FREELANCER] },
+      // "Meu Desempenho" is a personal score view — hidden from administrators (R5);
+      // coordinators keep it for the operation, freelancers see their own.
+      { icon: Star, labelKey: "nav.performance", path: "/performance", roles: ["coordinator", ...FREELANCER] },
       { icon: DollarSign, labelKey: "nav.financial", path: "/financial", roles: COORD },
     ],
   },

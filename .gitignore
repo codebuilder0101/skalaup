@@ -23,3 +23,6 @@ api.err.log
 *.local
 .vscode/*
 !.vscode/extensions.json
+
+# User-uploaded files (profile photos) — kept on disk, never committed.
+/uploads/

@@ -46,7 +46,9 @@ export async function resolvePaySettings(restaurantId) {
   return {
     basePay: num(r?.basePay) ?? num(g?.basePay) ?? 60,
     bonusPay: num(r?.bonusPay) ?? num(g?.bonusPay) ?? 75,
-    lateDiscount: num(r?.lateDiscount) ?? num(g?.lateDiscount) ?? 0,
+    // Late discount is GLOBAL only (R20 F5): the 3rd-late penalty is the same for
+    // every client, configured in Settings → Pontuação. Per-restaurant values are ignored.
+    lateDiscount: num(g?.lateDiscount) ?? 0,
     noShowMode: r?.noShowMode ?? g?.noShowMode ?? "highest_shift",
     noShowCustom: num(r?.noShowCustom) ?? num(g?.noShowCustom) ?? null,
     // Weekend bonus (§8.2) is on by default; a restaurant/global `false` disables it.

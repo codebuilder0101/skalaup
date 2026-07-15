@@ -25,7 +25,7 @@ import {
 import {
   getPayrollSummary, recomputePayroll, closePayroll, reopenPayroll, markPaidPayroll,
   addPayrollAdjustment, deletePayrollAdjustment, listPayrollEntries,
-  type PayrollReport, type PayrollFreelancer, type PayrollEntry,
+  type PayrollReport, type PayrollFreelancer, type PayrollEntry, type PayrollBucket,
 } from "@/lib/skalaup/payroll";
 import { listFreelancers, type FreelancerWithProfile } from "@/lib/skalaup/freelancers";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
@@ -46,6 +46,7 @@ export default function FinancialPage() {
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [entriesByUser, setEntriesByUser] = useState<Record<string, PayrollEntry[]>>({});
+  const [restaurantFilter, setRestaurantFilter] = useState<string>("all");
 
   // Manual adjustment dialog
   const [adjOpen, setAdjOpen] = useState(false);
@@ -89,6 +90,33 @@ export default function FinancialPage() {
       setRestaurants(rsts);
     })();
   }, []);
+
+  // Restaurant filter (R20 B3): "all" shows the full report; a specific restaurant
+  // collapses each freelancer to just that restaurant's line (dropping those with none).
+  const viewFreelancers = useMemo<PayrollFreelancer[]>(() => {
+    if (!report) return [];
+    if (restaurantFilter === "all") return report.freelancers;
+    return report.freelancers
+      .map((fr) => {
+        const rb = fr.byRestaurant.find((b) => b.restaurantId === restaurantFilter);
+        return rb ? { ...fr, totals: rb, byRestaurant: [rb] } : null;
+      })
+      .filter((fr): fr is PayrollFreelancer => fr !== null);
+  }, [report, restaurantFilter]);
+
+  const viewTotals = useMemo<PayrollBucket | undefined>(() => {
+    if (!report) return undefined;
+    if (restaurantFilter === "all") return report.totals;
+    return viewFreelancers.reduce<PayrollBucket>((acc, fr) => ({
+      shiftPay: acc.shiftPay + fr.totals.shiftPay,
+      weekendBonus: acc.weekendBonus + fr.totals.weekendBonus,
+      lateDiscount: acc.lateDiscount + fr.totals.lateDiscount,
+      noShowDiscount: acc.noShowDiscount + fr.totals.noShowDiscount,
+      manualAdjustment: acc.manualAdjustment + fr.totals.manualAdjustment,
+      shiftCount: acc.shiftCount + fr.totals.shiftCount,
+      net: acc.net + fr.totals.net,
+    }), { shiftPay: 0, weekendBonus: 0, lateDiscount: 0, noShowDiscount: 0, manualAdjustment: 0, shiftCount: 0, net: 0 });
+  }, [report, restaurantFilter, viewFreelancers]);
 
   const status = report?.period.status ?? "open";
   const isClosed = status === "closed";
@@ -189,7 +217,7 @@ export default function FinancialPage() {
     // pt-BR Excel uses ';' as the list separator; a comma-delimited file collapses into one column.
     const SEP = ";";
     const lines = [header.map(esc).join(SEP)];
-    for (const fr of report.freelancers) {
+    for (const fr of viewFreelancers) {
       const pix = fr.pixKey ?? "";
       const bank = fr.bankName ?? "";
       for (const rb of fr.byRestaurant) {
@@ -214,7 +242,7 @@ export default function FinancialPage() {
     URL.revokeObjectURL(url);
   };
 
-  const totals = report?.totals;
+  const totals = viewTotals;
   const discountsTotal = (totals?.lateDiscount ?? 0) + (totals?.noShowDiscount ?? 0);
 
   const entryTypeLabel = (type: PayrollEntry["type"]) => t(`skala.financial.entryType.${type}`);
@@ -244,6 +272,16 @@ export default function FinancialPage() {
               <Input type="month" className="h-9 w-44" value={month} onChange={(e) => setMonth(e.target.value)} />
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs">{t("skala.financial.filterRestaurant")}</Label>
+              <Select value={restaurantFilter} onValueChange={setRestaurantFilter}>
+                <SelectTrigger className="h-9 w-52"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("skala.financial.allRestaurants")}</SelectItem>
+                  {restaurants.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs">{t("skala.financial.status")}</Label>
               <div className="h-9 flex items-center">
                 {isPaid ? (
@@ -257,7 +295,7 @@ export default function FinancialPage() {
             </div>
             <div className="flex-1" />
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" className="rounded-xl" onClick={exportCsv} disabled={!report || report.freelancers.length === 0}>
+              <Button variant="outline" size="sm" className="rounded-xl" onClick={exportCsv} disabled={viewFreelancers.length === 0}>
                 <Download className="mr-1.5 h-4 w-4" />{t("skala.financial.exportCsv")}
               </Button>
               {!isFrozen && (
@@ -318,7 +356,7 @@ export default function FinancialPage() {
           <SummaryCard icon={<CalendarDays className="h-4 w-4" />} label={t("skala.financial.summary.shifts")} value={String(totals?.shiftCount ?? 0)} />
           <SummaryCard icon={<TrendingUp className="h-4 w-4" />} label={t("skala.financial.summary.bonus")} value={fmtBRL(totals?.weekendBonus ?? 0)} />
           <SummaryCard icon={<TrendingDown className="h-4 w-4" />} label={t("skala.financial.summary.discounts")} value={fmtBRL(discountsTotal)} />
-          <SummaryCard icon={<Users className="h-4 w-4" />} label={t("skala.financial.summary.freelancers")} value={String(report?.freelancerCount ?? 0)} />
+          <SummaryCard icon={<Users className="h-4 w-4" />} label={t("skala.financial.summary.freelancers")} value={String(viewFreelancers.length)} />
         </div>
 
         {/* Per-freelancer table */}
@@ -331,7 +369,7 @@ export default function FinancialPage() {
             <p className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />{t("skala.common.loading")}
             </p>
-          ) : !report || report.freelancers.length === 0 ? (
+          ) : !report || viewFreelancers.length === 0 ? (
             <div className="p-10 text-center text-sm text-muted-foreground">{t("skala.financial.empty")}</div>
           ) : (
             <Table>
@@ -349,7 +387,7 @@ export default function FinancialPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {report.freelancers.map((fr) => (
+                {viewFreelancers.map((fr) => (
                   <FreelancerRows
                     key={fr.userId}
                     fr={fr}

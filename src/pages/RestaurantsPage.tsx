@@ -365,16 +365,9 @@ export default function RestaurantsPage() {
             {/* --- Discounts & bonus --- */}
             <div className="space-y-3 pt-3 border-t">
               <h4 className="text-sm font-semibold text-foreground">{t("skala.restaurants.sectionDiscounts")}</h4>
+              {/* Late discount moved to a single global setting (R20 F5 — same for all
+                  clients; edited in Settings → Pontuação). Removed from the client form. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>{t("skala.restaurants.lateDiscount")}</Label>
-                  <Input
-                    type="number" min="0" step="0.01" inputMode="decimal"
-                    placeholder={t("skala.restaurants.inheritGlobal")}
-                    value={form.lateDiscountAmount}
-                    onChange={(e) => setForm({ ...form, lateDiscountAmount: e.target.value })}
-                  />
-                </div>
                 <div className="space-y-1.5">
                   <Label>{t("skala.restaurants.noShowMode")}</Label>
                   <Select

@@ -2,7 +2,7 @@ import { api } from "@/lib/api";
 import type { Result, ShiftType } from "./types";
 
 // Extra shifts ("turno extra", R9). Backed by /api/extra-shifts.
-export type ExtraShiftStatus = "pending" | "assigned" | "opened" | "rejected" | "cancelled";
+export type ExtraShiftStatus = "pending" | "assigned" | "opened" | "filled" | "rejected" | "cancelled";
 
 export interface ExtraShiftRequest {
   id: string;

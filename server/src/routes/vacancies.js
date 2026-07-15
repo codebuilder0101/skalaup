@@ -213,6 +213,26 @@ router.post("/claim", async (req, res) => {
       data: { assignmentId: row.id, date, shiftType },
     }).catch(() => {}))).catch(() => {});
 
+    // R20 E3: if this vaga came from a manager's extra-shift request, confirm to that
+    // manager now that it's actually filled, and advance the request to 'filled'.
+    pool.query(
+      `select e.id, e.requested_by as "requestedBy"
+         from public.demand_overrides ov
+         join public.extra_shift_requests e on e.id = ov.extra_shift_request_id
+        where ov.restaurant_id = $1 and ov.date = $2 and ov.shift_type = $3 and e.status = 'opened'
+        limit 1`,
+      [restaurantId, date, shiftType],
+    ).then(async ({ rows: er }) => {
+      const ereq = er[0];
+      if (!ereq?.requestedBy) return;
+      await pool.query(`update public.extra_shift_requests set status='filled', updated_at=now() where id=$1`, [ereq.id]);
+      await notify({
+        recipientUserId: ereq.requestedBy, type: "coverage_deficit", title: "Turno extra confirmado",
+        body: `${req.user.name || "Um freelancer"} assumiu seu turno extra de ${shiftPt} em ${date}.`,
+        data: { extraShiftId: ereq.id, path: "/extra-shifts" },
+      });
+    }).catch(() => {});
+
     res.status(201).json({ ok: true, assignmentId: row.id });
   } catch (e) {
     try { await client.query("rollback"); } catch { /* ignore */ }

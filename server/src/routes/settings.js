@@ -23,8 +23,8 @@ async function readConfig() {
   const s = await one(
     `select flexible_availability_points as fa, weekend_target_points as wt,
             furo_cover_points as fc, monthly_target_shifts as mts, swap_scoring_cap as cap,
-            manual_score_monthly_cap as mscap, star_cutoffs as cutoffs,
-            custom_score_criteria as criteria
+            manual_score_monthly_cap as mscap, late_discount_amount as ldc,
+            star_cutoffs as cutoffs, custom_score_criteria as criteria
        from public.app_settings where id = 1`,
   );
   const points = await getScorePoints(); // defaults + jsonb overrides (non-column keys)
@@ -43,6 +43,8 @@ async function readConfig() {
     monthlyTargetShifts: Number(s?.mts ?? 10),
     swapScoringCap: Number(s?.cap ?? 3),
     manualScoreMonthlyCap: Number(s?.mscap ?? 10),
+    // Global 3rd-late discount (R20 F5): same for all clients, edited here only.
+    lateDiscountAmount: Number(s?.ldc ?? 0),
     customCriteria,
   };
 }
@@ -112,6 +114,7 @@ router.put("/score", requireOps, async (req, res) => {
     if (isNum(b.monthlyTargetShifts)) colUpdates.monthly_target_shifts = Math.max(0, Math.round(Number(b.monthlyTargetShifts)));
     if (isNum(b.swapScoringCap)) colUpdates.swap_scoring_cap = Math.max(0, Math.round(Number(b.swapScoringCap)));
     if (isNum(b.manualScoreMonthlyCap)) colUpdates.manual_score_monthly_cap = Math.max(0, Number(b.manualScoreMonthlyCap));
+    if (isNum(b.lateDiscountAmount)) colUpdates.late_discount_amount = Math.max(0, Number(b.lateDiscountAmount));
 
     // Merge jsonb overrides on top of what's stored.
     const existing = (await one(`select score_points from public.app_settings where id = 1`))?.score_points || {};

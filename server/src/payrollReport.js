@@ -186,17 +186,22 @@ export async function generateMonthPay(monthRefRaw) {
 // ---------------------------------------------------------------------------
 const ZERO = () => ({
   shiftPay: 0, weekendBonus: 0, lateDiscount: 0, noShowDiscount: 0,
-  manualAdjustment: 0, shiftCount: 0, net: 0,
+  manualAdjustment: 0, manualAddition: 0, manualDeduction: 0, shiftCount: 0, net: 0,
 });
 function addEntry(bucket, type, amount, shiftCount) {
   if (type === "shift_pay") { bucket.shiftPay += amount; bucket.shiftCount += shiftCount; }
   else if (type === "weekend_bonus") bucket.weekendBonus += amount;
   else if (type === "late_discount") bucket.lateDiscount += amount;
   else if (type === "no_show_discount") bucket.noShowDiscount += amount;
-  else if (type === "manual_adjustment") bucket.manualAdjustment += amount;
+  else if (type === "manual_adjustment") {
+    bucket.manualAdjustment += amount;
+    // Split the signed adjustment so the UI can show acréscimos and descontos apart.
+    if (amount >= 0) bucket.manualAddition += amount;
+    else bucket.manualDeduction += amount;
+  }
   bucket.net += amount;
 }
-const MONEY_KEYS = ["shiftPay", "weekendBonus", "lateDiscount", "noShowDiscount", "manualAdjustment", "net"];
+const MONEY_KEYS = ["shiftPay", "weekendBonus", "lateDiscount", "noShowDiscount", "manualAdjustment", "manualAddition", "manualDeduction", "net"];
 function finalize(bucket) {
   // Round only the money fields — never the id/name/shiftCount fields on a line.
   for (const k of MONEY_KEYS) bucket[k] = round2(bucket[k]);

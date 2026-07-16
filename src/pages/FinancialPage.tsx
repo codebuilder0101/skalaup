@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   DollarSign, Loader2, RefreshCw, Lock, LockOpen, Download, Plus, Trash2,
   ChevronDown, ChevronRight, TrendingUp, TrendingDown, CalendarDays, Users, Coins,
-  BadgeCheck, CalendarClock,
+  BadgeCheck, CalendarClock, PlusCircle, MinusCircle,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/card";
@@ -115,9 +115,11 @@ export default function FinancialPage() {
       lateDiscount: acc.lateDiscount + fr.totals.lateDiscount,
       noShowDiscount: acc.noShowDiscount + fr.totals.noShowDiscount,
       manualAdjustment: acc.manualAdjustment + fr.totals.manualAdjustment,
+      manualAddition: acc.manualAddition + fr.totals.manualAddition,
+      manualDeduction: acc.manualDeduction + fr.totals.manualDeduction,
       shiftCount: acc.shiftCount + fr.totals.shiftCount,
       net: acc.net + fr.totals.net,
-    }), { shiftPay: 0, weekendBonus: 0, lateDiscount: 0, noShowDiscount: 0, manualAdjustment: 0, shiftCount: 0, net: 0 });
+    }), { shiftPay: 0, weekendBonus: 0, lateDiscount: 0, noShowDiscount: 0, manualAdjustment: 0, manualAddition: 0, manualDeduction: 0, shiftCount: 0, net: 0 });
   }, [report, restaurantFilter, viewFreelancers]);
 
   const status = report?.period.status ?? "open";
@@ -358,11 +360,13 @@ export default function FinancialPage() {
         </Card>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <SummaryCard icon={<Coins className="h-4 w-4" />} label={t("skala.financial.summary.net")} value={fmtBRL(totals?.net ?? 0)} accent />
           <SummaryCard icon={<CalendarDays className="h-4 w-4" />} label={t("skala.financial.summary.shifts")} value={String(totals?.shiftCount ?? 0)} />
           <SummaryCard icon={<TrendingUp className="h-4 w-4" />} label={t("skala.financial.summary.bonus")} value={fmtBRL(totals?.weekendBonus ?? 0)} />
           <SummaryCard icon={<TrendingDown className="h-4 w-4" />} label={t("skala.financial.summary.discounts")} value={fmtBRL(discountsTotal)} />
+          <SummaryCard icon={<PlusCircle className="h-4 w-4" />} label={t("skala.financial.summary.adjustmentsPlus")} value={fmtBRL(totals?.manualAddition ?? 0)} />
+          <SummaryCard icon={<MinusCircle className="h-4 w-4" />} label={t("skala.financial.summary.adjustmentsMinus")} value={fmtBRL(totals?.manualDeduction ?? 0)} />
           <SummaryCard icon={<Users className="h-4 w-4" />} label={t("skala.financial.summary.freelancers")} value={String(viewFreelancers.length)} />
         </div>
 

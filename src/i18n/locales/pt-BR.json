@@ -1666,6 +1666,8 @@
         "shifts": "Turnos pagos",
         "bonus": "Bônus",
         "discounts": "Descontos",
+        "adjustmentsPlus": "Ajustes (acréscimos)",
+        "adjustmentsMinus": "Ajustes (descontos)",
         "freelancers": "Freelancers"
       },
       "col": {

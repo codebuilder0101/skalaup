@@ -12,7 +12,9 @@ export interface PayrollBucket {
   weekendBonus: number;
   lateDiscount: number;    // ≤ 0
   noShowDiscount: number;  // ≤ 0
-  manualAdjustment: number;
+  manualAdjustment: number;  // net = manualAddition + manualDeduction
+  manualAddition: number;    // ≥ 0
+  manualDeduction: number;   // ≤ 0
   shiftCount: number;
   net: number;
 }
@@ -79,7 +81,7 @@ const EMPTY_REPORT = (month: string): PayrollReport => ({
   },
   totals: {
     shiftPay: 0, weekendBonus: 0, lateDiscount: 0, noShowDiscount: 0,
-    manualAdjustment: 0, shiftCount: 0, net: 0,
+    manualAdjustment: 0, manualAddition: 0, manualDeduction: 0, shiftCount: 0, net: 0,
   },
   freelancerCount: 0,
   freelancers: [],

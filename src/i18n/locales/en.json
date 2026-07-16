@@ -1666,6 +1666,8 @@
         "shifts": "Shifts paid",
         "bonus": "Bonus",
         "discounts": "Discounts",
+        "adjustmentsPlus": "Adjustments (additions)",
+        "adjustmentsMinus": "Adjustments (deductions)",
         "freelancers": "Freelancers"
       },
       "col": {

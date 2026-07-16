@@ -24,6 +24,7 @@ const LIST_SELECT = `
          a.date::text as date, a.shift_type as "shiftType",
          a.start_time as "startTime", a.end_time as "endTime", a.status,
          u.name as "freelancerName", r.name as "restaurantName",
+         coalesce(r.timezone, 'America/Sao_Paulo') as timezone,
          att.checkin_at as "checkinAt", att.checkout_at as "checkoutAt",
          att.lateness_minutes as "latenessMinutes", att.lateness_category as "latenessCategory",
          att.no_show as "noShow", att.edited_by_coordinator as "editedByCoordinator",

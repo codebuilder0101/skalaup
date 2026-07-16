@@ -20,6 +20,7 @@ import {
 import { LatenessBadge, NoShowBadge, fmtTime } from "@/components/attendance/StatusBadges";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
 import { formatDateBR } from "@/lib/br-format";
+import { zonedInputToUTC, utcToZonedInput, DEFAULT_TZ } from "@/lib/tz";
 import {
   listAttendance, listPendingAbsences, markNoShow, undoNoShow, editAttendance, decideAbsence,
 } from "@/lib/skalaup/attendance";
@@ -29,20 +30,6 @@ import type {
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const SHIFT_ICON: Record<ShiftType, typeof Sun> = { lunch: Sun, dinner: Moon };
-
-// ISO <-> <input type="datetime-local"> (local wall-clock) conversion.
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-function fromLocalInput(v: string): string | null {
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
 
 export default function AttendancePage() {
   const { t, i18n } = useTranslation();
@@ -135,18 +122,20 @@ export default function AttendancePage() {
   };
 
   const openEdit = (s: AttendanceShift) => {
+    const tz = s.timezone || DEFAULT_TZ;
     setEditTarget(s);
-    setEdCheckin(toLocalInput(s.checkinAt));
-    setEdCheckout(toLocalInput(s.checkoutAt));
+    setEdCheckin(utcToZonedInput(s.checkinAt, tz));
+    setEdCheckout(utcToZonedInput(s.checkoutAt, tz));
     setEdReason(s.justificationText ?? "");
   };
 
   const submitEdit = async () => {
     if (!editTarget) return;
+    const tz = editTarget.timezone || DEFAULT_TZ;
     setBusy(editTarget.assignmentId);
     const { error } = await editAttendance(editTarget.assignmentId, {
-      checkinAt: fromLocalInput(edCheckin),
-      checkoutAt: fromLocalInput(edCheckout),
+      checkinAt: zonedInputToUTC(edCheckin, tz),
+      checkoutAt: zonedInputToUTC(edCheckout, tz),
       reason: edReason.trim() || null,
     });
     setBusy(null);
@@ -261,7 +250,7 @@ export default function AttendancePage() {
                             <p className="text-sm font-medium text-foreground">{s.freelancerName}</p>
                             <p className="text-xs text-muted-foreground">
                               {t(`skala.scheduleBuilder.shift.${s.shiftType}`)} · {s.startTime.slice(0, 5)}–{s.endTime.slice(0, 5)}
-                              {s.checkinAt && <> · {fmtTime(s.checkinAt, lng)} → {fmtTime(s.checkoutAt, lng)}</>}
+                              {s.checkinAt && <> · {fmtTime(s.checkinAt, lng, s.timezone)} → {fmtTime(s.checkoutAt, lng, s.timezone)}</>}
                             </p>
                           </div>
                         </div>

@@ -111,7 +111,7 @@ export default function TodayPage() {
                             <>
                               {s.checkinAt && <LatenessBadge category={s.latenessCategory} minutes={s.latenessMinutes} />}
                               <span className="text-xs text-muted-foreground">
-                                {fmtTime(s.checkinAt, lng)} → {fmtTime(s.checkoutAt, lng)}
+                                {fmtTime(s.checkinAt, lng, s.timezone)} → {fmtTime(s.checkoutAt, lng, s.timezone)}
                               </span>
                               <Badge variant="outline" className={`rounded-full font-medium ${STATUS_CLASS[st]}`}>
                                 {t(`skala.today.${st}`)}

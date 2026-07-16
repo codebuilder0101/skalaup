@@ -149,10 +149,10 @@ function ShiftCard({
               <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 dark:text-red-300"><Ban className="h-3.5 w-3.5" />{t("skala.checkin.noShow")}</span>
             ) : shift.checkinAt ? (
               <>
-                <span className="text-xs text-muted-foreground">{t("skala.checkin.checkedInAt", { time: fmtTime(shift.checkinAt, lng) })}</span>
+                <span className="text-xs text-muted-foreground">{t("skala.checkin.checkedInAt", { time: fmtTime(shift.checkinAt, lng, shift.timezone) })}</span>
                 <LatenessBadge category={shift.latenessCategory} minutes={shift.latenessMinutes} />
                 {shift.checkoutAt && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-success"><CheckCircle2 className="h-3.5 w-3.5" />{t("skala.checkin.checkedOutAt", { time: fmtTime(shift.checkoutAt, lng) })}</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-success"><CheckCircle2 className="h-3.5 w-3.5" />{t("skala.checkin.checkedOutAt", { time: fmtTime(shift.checkoutAt, lng, shift.timezone) })}</span>
                 )}
               </>
             ) : null}

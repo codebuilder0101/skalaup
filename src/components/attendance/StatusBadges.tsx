@@ -32,10 +32,13 @@ export function NoShowBadge() {
   );
 }
 
-// Format an ISO timestamp to a short local HH:MM, or "—" when null.
-export function fmtTime(iso: string | null, lng: string): string {
+// Format an ISO timestamp to a short HH:MM in the given timezone (restaurant's),
+// or "—" when null. Falls back to browser-local time when no timezone is passed.
+export function fmtTime(iso: string | null, lng: string, timeZone?: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat(lng, { hour: "2-digit", minute: "2-digit" }).format(d);
+  return new Intl.DateTimeFormat(lng, {
+    hour: "2-digit", minute: "2-digit", ...(timeZone ? { timeZone } : {}),
+  }).format(d);
 }

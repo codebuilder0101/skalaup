@@ -336,6 +336,7 @@ export interface AttendanceShift {
   status: AssignmentStatus;
   freelancerName: string;
   restaurantName: string;
+  timezone: string;
   checkinAt: string | null;
   checkoutAt: string | null;
   latenessMinutes: number | null;

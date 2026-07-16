@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
 } from "@/components/ui/table";
@@ -52,6 +53,7 @@ export default function FinancialPage() {
   const [adjOpen, setAdjOpen] = useState(false);
   const [adjUserId, setAdjUserId] = useState<string>("");
   const [adjRestaurantId, setAdjRestaurantId] = useState<string>("none");
+  const [adjGeneral, setAdjGeneral] = useState(false); // true = not tied to any restaurant
   const [adjAmount, setAdjAmount] = useState<string>("");
   const [adjNotes, setAdjNotes] = useState<string>("");
   const [adjSaving, setAdjSaving] = useState(false);
@@ -173,7 +175,11 @@ export default function FinancialPage() {
 
   const openAdjust = (userId?: string) => {
     setAdjUserId(userId ?? "");
-    setAdjRestaurantId("none");
+    // Default the adjustment to the restaurant currently being viewed, so it lands in
+    // that restaurant's total. Viewing "all" defaults to a general (no-restaurant) one.
+    const specific = restaurantFilter !== "all";
+    setAdjGeneral(!specific);
+    setAdjRestaurantId(specific ? restaurantFilter : "none");
     setAdjAmount("");
     setAdjNotes("");
     setAdjOpen(true);
@@ -183,10 +189,11 @@ export default function FinancialPage() {
     const amount = Number(adjAmount.replace(",", "."));
     if (!adjUserId) { toast.error(t("skala.financial.adjPickFreelancer")); return; }
     if (!Number.isFinite(amount) || amount === 0) { toast.error(t("skala.financial.adjBadAmount")); return; }
+    if (!adjGeneral && adjRestaurantId === "none") { toast.error(t("skala.financial.adjPickRestaurant")); return; }
     setAdjSaving(true);
     const { data, error } = await addPayrollAdjustment({
       month, userId: adjUserId,
-      restaurantId: adjRestaurantId === "none" ? null : adjRestaurantId,
+      restaurantId: adjGeneral ? null : adjRestaurantId,
       amount, notes: adjNotes || null,
     });
     setAdjSaving(false);
@@ -424,16 +431,24 @@ export default function FinancialPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t("skala.financial.adjRestaurant")}</Label>
-              <Select value={adjRestaurantId} onValueChange={setAdjRestaurantId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("skala.financial.adjNoRestaurant")}</SelectItem>
-                  {restaurants.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2">
+              <div>
+                <Label className="text-xs">{t("skala.financial.adjGeneral")}</Label>
+                <p className="text-[11px] text-muted-foreground">{t("skala.financial.adjGeneralHint")}</p>
+              </div>
+              <Switch checked={adjGeneral} onCheckedChange={setAdjGeneral} />
             </div>
+            {!adjGeneral && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">{t("skala.financial.adjRestaurant")}</Label>
+                <Select value={adjRestaurantId} onValueChange={setAdjRestaurantId}>
+                  <SelectTrigger><SelectValue placeholder={t("skala.financial.adjPickRestaurantPh")} /></SelectTrigger>
+                  <SelectContent>
+                    {restaurants.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs">{t("skala.financial.adjAmount")}</Label>
               <Input

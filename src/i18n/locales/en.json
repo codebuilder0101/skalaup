@@ -1685,8 +1685,12 @@
         "manual_adjustment": "Manual adjustment"
       },
       "adjTitle": "Manual payroll adjustment",
-      "adjRestaurant": "Client (optional)",
+      "adjRestaurant": "Client",
       "adjNoRestaurant": "No client",
+      "adjGeneral": "General payroll adjustment",
+      "adjGeneralHint": "No specific client. Applies to the freelancer overall and shows under \"All restaurants\".",
+      "adjPickRestaurant": "Pick a client or mark it as a general adjustment.",
+      "adjPickRestaurantPh": "Select the client",
       "adjAmount": "Amount (R$)",
       "adjAmountHint": "Use a positive value to add or a negative value to deduct.",
       "adjNotes": "Note",

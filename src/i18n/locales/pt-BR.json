@@ -1685,8 +1685,12 @@
         "manual_adjustment": "Ajuste manual"
       },
       "adjTitle": "Ajuste manual na folha",
-      "adjRestaurant": "Cliente (opcional)",
+      "adjRestaurant": "Cliente",
       "adjNoRestaurant": "Sem cliente",
+      "adjGeneral": "Ajuste geral da folha",
+      "adjGeneralHint": "Sem cliente específico. Vale para o freelancer no geral e aparece em \"Todos os restaurantes\".",
+      "adjPickRestaurant": "Selecione um cliente ou marque como ajuste geral.",
+      "adjPickRestaurantPh": "Selecione o cliente",
       "adjAmount": "Valor (R$)",
       "adjAmountHint": "Use valor positivo para adicionar ou negativo para descontar.",
       "adjNotes": "Observação",

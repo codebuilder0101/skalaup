@@ -5,40 +5,106 @@ import { isOps, managerRestaurantIds, canEditRestaurant } from "../access.js";
 import { weekdayOf, isWeekendMandatory, resolveShiftTimes } from "../scheduleRules.js";
 import { notify, coordinatorIds } from "../notify.js";
 
-// Extra shifts ("turno extra", R9). A restaurant manager requests a shift beyond
-// the base schedule; coordination is notified and either (a) assigns a freelancer
-// directly, or (b) opens it as a vaga for freelancers to claim (via an is_extra
-// demand override). Whoever works an is_extra shift earns the furo-cover reward
-// on checkout (see attendance.js).
+// Extra shifts ("turno extra"). A restaurant manager requests a shift beyond the base
+// schedule; coordination is notified and either (a) INVITES a freelancer directly — who
+// must ACCEPT within 24h — or (b) opens it as a vaga for freelancers to claim. The
+// manager is only confirmed ("aprovado", no freelancer name) once someone actually
+// commits: accepts the invite or claims the vaga. Whoever works an is_extra shift earns
+// the furo-cover reward on checkout (see attendance.js).
 const router = Router();
 router.use(requireAuth);
 
 const isFreela = (role) => role === "freelancer" || role === "visitor";
 const today = () => new Date().toISOString().slice(0, 10);
+const shiftPt = (s) => (s === "lunch" ? "almoço" : "janta");
 
-const REQ_SELECT = `
+// Manager-facing columns never expose who was invited/assigned (the person can change;
+// the manager only ever sees the status). Ops get the assignee + deadline too.
+const REQ_BASE = `
   e.id, e.restaurant_id as "restaurantId", r.name as "restaurantName",
   e.date::text as date, e.shift_type as "shiftType", e.headcount, e.reason,
   e.status, e.requested_by as "requestedBy", req.name as "requestedByName",
   e.created_at as "createdAt", e.decided_at as "decidedAt"`;
+const REQ_SELECT_OPS = `${REQ_BASE},
+  e.assigned_user_id as "assignedUserId", au.name as "assignedUserName",
+  e.accept_deadline as "acceptDeadline"`;
 const REQ_FROM = `
   from public.extra_shift_requests e
   left join public.restaurants r on r.id = e.restaurant_id
-  left join public.users req on req.id = e.requested_by`;
+  left join public.users req on req.id = e.requested_by
+  left join public.users au on au.id = e.assigned_user_id`;
 
-// GET /api/extra-shifts — ops see all (pending first); managers see their own.
+// Flip any awaiting-accept invites whose 24h window elapsed back to 'pending' and tell
+// coordination to reassign. Atomic + concurrency-safe (skip-locked) so it can run from
+// both the hourly cron and lazily on the ops list without double-notifying.
+export async function expireExtraShiftInvites() {
+  const { rows } = await pool.query(
+    `with expiring as (
+       select e.id, e.date::text as date, e.shift_type as st, au.name as freela
+         from public.extra_shift_requests e
+         left join public.users au on au.id = e.assigned_user_id
+        where e.status = 'awaiting_accept'
+          and e.accept_deadline is not null and e.accept_deadline < now()
+        for update of e skip locked
+     ), upd as (
+       update public.extra_shift_requests t
+          set status='pending', assigned_user_id=null, assigned_at=null,
+              accept_deadline=null, updated_at=now()
+         from expiring where t.id = expiring.id
+     )
+     select id, date, st as "shiftType", freela from expiring`,
+  );
+  if (rows.length === 0) return 0;
+  const coords = await coordinatorIds();
+  for (const e of rows) {
+    for (const cid of coords) {
+      await notify({
+        recipientUserId: cid, type: "coverage_deficit",
+        title: "Turno extra sem aceite",
+        body: `${e.freela || "O freelancer"} não aceitou o turno extra de ${shiftPt(e.shiftType)} em ${e.date} no prazo. Escale outra pessoa.`,
+        data: { extraShiftId: e.id, path: "/extra-shifts" },
+      }).catch(() => {});
+    }
+  }
+  return rows.length;
+}
+
+// GET /api/extra-shifts/invites — a freelancer's pending extra-shift invites (accept/decline).
+router.get("/invites", async (req, res) => {
+  try {
+    if (!isFreela(req.user.role)) return res.json([]);
+    const { rows } = await pool.query(
+      `select e.id, e.restaurant_id as "restaurantId", r.name as "restaurantName",
+              e.date::text as date, e.shift_type as "shiftType", e.reason,
+              e.accept_deadline as "acceptDeadline"
+         from public.extra_shift_requests e
+         left join public.restaurants r on r.id = e.restaurant_id
+        where e.status = 'awaiting_accept' and e.assigned_user_id = $1
+          and (e.accept_deadline is null or e.accept_deadline > now())
+        order by e.accept_deadline asc nulls last`,
+      [req.user.sub],
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error("extra-shift invites error:", e.message);
+    res.status(500).json({ error: "Falha ao carregar convites." });
+  }
+});
+
+// GET /api/extra-shifts — ops see all (pending first); managers see their own (no names).
 router.get("/", async (req, res) => {
   try {
     if (isOps(req.user.role)) {
+      await expireExtraShiftInvites().catch(() => {}); // keep the queue fresh
       const { rows } = await pool.query(
-        `select ${REQ_SELECT} ${REQ_FROM}
+        `select ${REQ_SELECT_OPS} ${REQ_FROM}
           order by (e.status = 'pending') desc, e.created_at desc limit 100`,
       );
       return res.json(rows);
     }
     if (req.user.role === "restaurant_manager") {
       const { rows } = await pool.query(
-        `select ${REQ_SELECT} ${REQ_FROM}
+        `select ${REQ_BASE} ${REQ_FROM}
           where e.requested_by = $1 order by e.created_at desc limit 100`,
         [req.user.sub],
       );
@@ -112,8 +178,7 @@ router.post("/", async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    // R20 E2: block requests with less than 48h lead time to the shift start
-    // (computed in the restaurant's timezone).
+    // Block requests with less than 48h lead time to the shift start (restaurant tz).
     const startTimes = await resolveShiftTimes(restaurantId, b.shiftType);
     const lead = await one(
       `select extract(epoch from (
@@ -132,12 +197,11 @@ router.post("/", async (req, res) => {
       [restaurantId, b.date, b.shiftType, headcount, b.reason || null, req.user.sub],
     );
 
-    const shiftPt = b.shiftType === "lunch" ? "almoço" : "janta";
     for (const cid of await coordinatorIds()) {
       await notify({
         recipientUserId: cid, type: "coverage_deficit",
         title: "Pedido de turno extra",
-        body: `${req.user.name || "Um gestor"} pediu um turno extra (${shiftPt}) em ${b.date}.`,
+        body: `${req.user.name || "Um gestor"} pediu um turno extra (${shiftPt(b.shiftType)}) em ${b.date}.`,
         data: { extraShiftId: row.id, path: "/extra-shifts" },
       });
     }
@@ -148,27 +212,28 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Load a pending request or send the proper error; returns the row or null (after responding).
-async function loadPending(req, res) {
+// Load a request in a required status or send the proper error; returns the row or null.
+async function loadIn(req, res, requiredStatus) {
   if (!isOps(req.user.role)) { res.status(403).json({ error: "Forbidden" }); return null; }
   const e = await one(
     `select id, restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType",
-            headcount, status, requested_by as "requestedBy"
+            headcount, status, requested_by as "requestedBy", assigned_user_id as "assignedUserId"
        from public.extra_shift_requests where id = $1`,
     [req.params.id],
   );
   if (!e) { res.status(404).json({ error: "Not found" }); return null; }
-  if (e.status !== "pending") {
+  if (e.status !== requiredStatus) {
     res.status(400).json({ error: "bad_state", message: "Este pedido já foi resolvido." });
     return null;
   }
   return e;
 }
 
-// POST /api/extra-shifts/:id/assign { userId } — coordinator schedules someone directly.
+// POST /api/extra-shifts/:id/assign { userId } — coordinator INVITES a freelancer.
+// The invite must be accepted within 24h; the manager is NOT confirmed yet.
 router.post("/:id/assign", async (req, res) => {
   try {
-    const e = await loadPending(req, res);
+    const e = await loadIn(req, res, "pending");
     if (!e) return;
     const userId = (req.body || {}).userId;
     if (!userId) return res.status(400).json({ error: "userId is required" });
@@ -185,6 +250,81 @@ router.post("/:id/assign", async (req, res) => {
     );
     if (clash) return res.status(409).json({ error: "user_busy", message: "Este freelancer já está escalado neste turno." });
 
+    await pool.query(
+      `update public.extra_shift_requests
+          set status='awaiting_accept', assigned_user_id=$2, assigned_at=now(),
+              accept_deadline = now() + interval '24 hours',
+              decided_by=$3, decided_at=now(), updated_at=now()
+        where id=$1`,
+      [e.id, userId, req.user.sub],
+    );
+
+    await notify({
+      recipientUserId: userId, type: "extra_shift_invite",
+      title: "Convite de turno extra",
+      body: `Você foi convidado para um turno extra de ${shiftPt(e.shiftType)} em ${e.date}. Aceite em até 24h na tela de Vagas.`,
+      data: { extraShiftId: e.id, path: "/vagas" },
+    });
+    res.status(201).json({ status: "awaiting_accept" });
+  } catch (e2) {
+    console.error("extra-shift assign error:", e2.message);
+    res.status(500).json({ error: "Falha ao convidar o freelancer." });
+  }
+});
+
+// POST /api/extra-shifts/:id/cancel-invite — coordinator withdraws a pending invite,
+// returning the request to 'pending' so someone else can be scheduled.
+router.post("/:id/cancel-invite", async (req, res) => {
+  try {
+    const e = await loadIn(req, res, "awaiting_accept");
+    if (!e) return;
+    await pool.query(
+      `update public.extra_shift_requests
+          set status='pending', assigned_user_id=null, assigned_at=null,
+              accept_deadline=null, updated_at=now() where id=$1`,
+      [e.id],
+    );
+    if (e.assignedUserId) {
+      await notify({
+        recipientUserId: e.assignedUserId, type: "extra_shift_invite",
+        title: "Convite de turno extra cancelado",
+        body: `O convite para o turno extra de ${shiftPt(e.shiftType)} em ${e.date} foi cancelado pela coordenação.`,
+        data: { extraShiftId: e.id, path: "/vagas" },
+      });
+    }
+    res.json({ status: "pending" });
+  } catch (e2) {
+    console.error("extra-shift cancel-invite error:", e2.message);
+    res.status(500).json({ error: "Falha ao cancelar o convite." });
+  }
+});
+
+// POST /api/extra-shifts/:id/accept — the invited freelancer accepts (within 24h).
+router.post("/:id/accept", async (req, res) => {
+  try {
+    if (!isFreela(req.user.role)) return res.status(403).json({ error: "Forbidden" });
+    const e = await one(
+      `select id, restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType",
+              status, requested_by as "requestedBy", assigned_user_id as "assignedUserId",
+              accept_deadline as "acceptDeadline"
+         from public.extra_shift_requests where id = $1`,
+      [req.params.id],
+    );
+    if (!e) return res.status(404).json({ error: "Not found" });
+    if (e.assignedUserId !== req.user.sub || e.status !== "awaiting_accept") {
+      return res.status(400).json({ error: "bad_state", message: "Este convite não está mais disponível." });
+    }
+    if (e.acceptDeadline && new Date(e.acceptDeadline).getTime() < Date.now()) {
+      return res.status(409).json({ error: "expired", message: "O prazo para aceitar este convite expirou." });
+    }
+    if (e.date < today()) return res.status(400).json({ error: "past_date", message: "Este turno já passou." });
+    const clash = await one(
+      `select 1 from public.schedule_assignments
+        where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'`,
+      [req.user.sub, e.date, e.shiftType],
+    );
+    if (clash) return res.status(409).json({ error: "clash", message: "Você já está escalado neste turno." });
+
     const times = await resolveShiftTimes(e.restaurantId, e.shiftType);
     const weekendMandatory = isWeekendMandatory(weekdayOf(e.date), e.shiftType);
     const cyc = await one(
@@ -196,44 +336,77 @@ router.post("/:id/assign", async (req, res) => {
       `insert into public.schedule_assignments
          (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time,
           status, is_weekend_mandatory, is_extra, assigned_via, created_by, published_at)
-       values ($1,$2,$3,$4,$5,$6,$7,'published',$8,true,'coordinator',$9, now())
+       values ($1,$2,$3,$4,$5,$6,$7,'published',$8,true,'coordinator',$3, now())
        returning id`,
-      [cyc?.id ?? null, e.restaurantId, userId, e.date, e.shiftType, times.startTime, times.endTime,
-       weekendMandatory, req.user.sub],
+      [cyc?.id ?? null, e.restaurantId, req.user.sub, e.date, e.shiftType, times.startTime, times.endTime, weekendMandatory],
     );
     await pool.query(
-      `update public.extra_shift_requests
-          set status='assigned', decided_by=$2, decided_at=now(), updated_at=now() where id=$1`,
-      [e.id, req.user.sub],
+      `update public.extra_shift_requests set status='filled', updated_at=now() where id=$1`, [e.id],
     );
 
-    const shiftPt = e.shiftType === "lunch" ? "almoço" : "janta";
-    await notify({
-      recipientUserId: userId, type: "schedule_published",
-      title: "Você foi escalado em um turno extra",
-      body: `Turno extra de ${shiftPt} em ${e.date}. Os pontos entram após você trabalhar o turno.`,
-      data: { assignmentId: a.id, date: e.date, shiftType: e.shiftType },
-    });
-    // R20 E3: confirm to the requesting manager now that someone is actually scheduled.
+    // Manager: confirm as "aprovado" WITHOUT naming the freelancer (they may change).
     if (e.requestedBy) {
       await notify({
         recipientUserId: e.requestedBy, type: "coverage_deficit",
-        title: "Turno extra confirmado",
-        body: `${u.name} foi escalado no seu turno extra de ${shiftPt} em ${e.date}.`,
+        title: "Turno extra aprovado",
+        body: `Seu turno extra de ${shiftPt(e.shiftType)} em ${e.date} foi aprovado.`,
         data: { extraShiftId: e.id, path: "/extra-shifts" },
       });
     }
-    res.status(201).json({ status: "assigned", assignmentId: a.id });
+    // Coordination: they DO see who accepted.
+    for (const cid of await coordinatorIds()) {
+      await notify({
+        recipientUserId: cid, type: "schedule_published",
+        title: "Turno extra aceito",
+        body: `${req.user.name || "O freelancer"} aceitou o turno extra de ${shiftPt(e.shiftType)} em ${e.date}.`,
+        data: { extraShiftId: e.id, assignmentId: a.id },
+      });
+    }
+    res.status(201).json({ status: "filled", assignmentId: a.id });
   } catch (e2) {
-    console.error("extra-shift assign error:", e2.message);
-    res.status(500).json({ error: "Falha ao escalar o turno extra." });
+    console.error("extra-shift accept error:", e2.message);
+    res.status(500).json({ error: "Falha ao aceitar o turno extra." });
+  }
+});
+
+// POST /api/extra-shifts/:id/decline — the invited freelancer declines; back to 'pending'.
+router.post("/:id/decline", async (req, res) => {
+  try {
+    if (!isFreela(req.user.role)) return res.status(403).json({ error: "Forbidden" });
+    const e = await one(
+      `select id, date::text as date, shift_type as "shiftType", status, assigned_user_id as "assignedUserId"
+         from public.extra_shift_requests where id = $1`,
+      [req.params.id],
+    );
+    if (!e) return res.status(404).json({ error: "Not found" });
+    if (e.assignedUserId !== req.user.sub || e.status !== "awaiting_accept") {
+      return res.status(400).json({ error: "bad_state", message: "Este convite não está mais disponível." });
+    }
+    await pool.query(
+      `update public.extra_shift_requests
+          set status='pending', assigned_user_id=null, assigned_at=null,
+              accept_deadline=null, updated_at=now() where id=$1`,
+      [e.id],
+    );
+    for (const cid of await coordinatorIds()) {
+      await notify({
+        recipientUserId: cid, type: "coverage_deficit",
+        title: "Turno extra recusado",
+        body: `${req.user.name || "O freelancer"} recusou o turno extra de ${shiftPt(e.shiftType)} em ${e.date}. Escale outra pessoa.`,
+        data: { extraShiftId: e.id, path: "/extra-shifts" },
+      });
+    }
+    res.json({ status: "pending" });
+  } catch (e2) {
+    console.error("extra-shift decline error:", e2.message);
+    res.status(500).json({ error: "Falha ao recusar o turno extra." });
   }
 });
 
 // POST /api/extra-shifts/:id/open — coordinator opens it as a vaga (is_extra demand override).
 router.post("/:id/open", async (req, res) => {
   try {
-    const e = await loadPending(req, res);
+    const e = await loadIn(req, res, "pending");
     if (!e) return;
     if (e.date < today()) return res.status(400).json({ error: "past_date", message: "Este turno já passou." });
 
@@ -243,8 +416,7 @@ router.post("/:id/open", async (req, res) => {
       `select count(*)::int as n from public.schedule_assignments
         where restaurant_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'`,
       [e.restaurantId, e.date, e.shiftType])).n;
-    // Link the override back to this request (R20 E3) so the vaga-claim path can
-    // confirm to the manager once someone actually takes it.
+    // Link the override back to this request (so the vaga-claim path can confirm the manager).
     await pool.query(
       `insert into public.demand_overrides (restaurant_id, date, shift_type, required_count, reason, is_extra, extra_shift_request_id, created_by)
        values ($1,$2,$3,$4,$5,true,$6,$7)
@@ -266,10 +438,10 @@ router.post("/:id/open", async (req, res) => {
   }
 });
 
-// POST /api/extra-shifts/:id/reject — coordinator declines the request.
+// POST /api/extra-shifts/:id/reject — coordinator declines the manager's request.
 router.post("/:id/reject", async (req, res) => {
   try {
-    const e = await loadPending(req, res);
+    const e = await loadIn(req, res, "pending");
     if (!e) return;
     await pool.query(
       `update public.extra_shift_requests

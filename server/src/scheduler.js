@@ -6,6 +6,7 @@ import cron from "node-cron";
 import { pool, one } from "./db.js";
 import { notify, coordinatorIds } from "./notify.js";
 import { weekdayOf } from "./scheduleRules.js";
+import { expireExtraShiftInvites } from "./routes/extraShifts.js";
 
 // Feedback 40% coverage (§10.3): ensure each freelancer gets feedback requests for
 // ~40% of their published shifts this month, each assigned to the manager of that
@@ -368,6 +369,14 @@ export async function runCycleMaintenance() {
     summary.inactivated = 0;
   }
 
+  // 6) Expire extra-shift invites not accepted within 24h (client round 2026-07-16).
+  try {
+    summary.extraInvitesExpired = await expireExtraShiftInvites();
+  } catch (e) {
+    console.error("[scheduler] extra-shift invite expiry failed:", e.message);
+    summary.extraInvitesExpired = 0;
+  }
+
   return summary;
 }
 
@@ -379,4 +388,13 @@ export function startScheduler() {
       .catch((e) => console.error("[scheduler] maintenance failed:", e.message));
   });
   console.log("[scheduler] cycle maintenance scheduled (daily 09:00)");
+
+  // Hourly: expire extra-shift invites past their 24h acceptance window so the
+  // deadline is honored with at most ~1h latency (the daily job is too coarse).
+  cron.schedule("0 * * * *", () => {
+    expireExtraShiftInvites()
+      .then((n) => { if (n) console.log(`[scheduler] expired ${n} extra-shift invite(s)`); })
+      .catch((e) => console.error("[scheduler] extra-shift invite expiry failed:", e.message));
+  });
+  console.log("[scheduler] extra-shift invite expiry scheduled (hourly)");
 }

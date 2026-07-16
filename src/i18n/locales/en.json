@@ -2062,11 +2062,29 @@
       "assignTitle": "Assign to extra shift",
       "noCandidates": "No freelancer free for this shift.",
       "confirmAssign": "Assign",
+      "inviteSent": "Invite sent to the freelancer. Awaiting acceptance.",
+      "cancelInvite": "Cancel invite",
+      "inviteCancelled": "Invite cancelled.",
+      "invites": {
+        "title": "Extra-shift invites",
+        "accept": "Accept",
+        "decline": "Decline",
+        "deadline": "Accept by {{date}}",
+        "accepted": "Extra shift accepted! You're scheduled.",
+        "declined": "Invite declined."
+      },
       "status": {
         "pending": "Pending",
         "assigned": "Assigned",
         "opened": "Vaga open",
+        "awaiting_accept": "Awaiting acceptance",
         "filled": "Filled",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled"
+      },
+      "managerStatus": {
+        "pending": "Pending",
+        "approved": "Approved",
         "rejected": "Rejected",
         "cancelled": "Cancelled"
       }

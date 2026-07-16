@@ -2062,11 +2062,29 @@
       "assignTitle": "Escalar no turno extra",
       "noCandidates": "Nenhum freelancer livre para este turno.",
       "confirmAssign": "Escalar",
+      "inviteSent": "Convite enviado ao freelancer. Aguardando o aceite.",
+      "cancelInvite": "Cancelar convite",
+      "inviteCancelled": "Convite cancelado.",
+      "invites": {
+        "title": "Convites de turno extra",
+        "accept": "Aceitar",
+        "decline": "Recusar",
+        "deadline": "Aceite até {{date}}",
+        "accepted": "Turno extra aceito! Você já está escalado.",
+        "declined": "Convite recusado."
+      },
       "status": {
         "pending": "Pendente",
         "assigned": "Escalado",
         "opened": "Vaga aberta",
+        "awaiting_accept": "Aguardando aceite",
         "filled": "Preenchido",
+        "rejected": "Recusado",
+        "cancelled": "Cancelado"
+      },
+      "managerStatus": {
+        "pending": "Pendente",
+        "approved": "Aprovado",
         "rejected": "Recusado",
         "cancelled": "Cancelado"
       }

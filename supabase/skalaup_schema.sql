@@ -893,12 +893,17 @@ alter table public.app_settings add column if not exists weekend_target_points n
 alter table public.demand_overrides
   add column if not exists extra_shift_request_id uuid references public.extra_shift_requests(id) on delete set null;
 
--- E3 — 'filled' extends the extra-shift lifecycle: a vaga-opened request becomes
--- 'filled' the moment someone is actually scheduled into it.
+-- Extra-shift acceptance flow (client round 2026-07-16): a direct assign becomes an
+-- INVITE the freelancer must accept within 24h; only then is the manager confirmed.
+-- 'awaiting_accept' is the interim state; assigned_user_id/assigned_at/accept_deadline
+-- track the invite. 'filled' now means accepted (direct) or claimed (vaga).
+alter table public.extra_shift_requests add column if not exists assigned_user_id uuid references public.users(id) on delete set null;
+alter table public.extra_shift_requests add column if not exists assigned_at timestamptz;
+alter table public.extra_shift_requests add column if not exists accept_deadline timestamptz;
 alter table public.extra_shift_requests drop constraint if exists extra_shift_requests_status_check;
 alter table public.extra_shift_requests
   add constraint extra_shift_requests_status_check
-  check (status in ('pending','assigned','opened','filled','rejected','cancelled'));
+  check (status in ('pending','assigned','opened','awaiting_accept','filled','rejected','cancelled'));
 
 -- Item 6 — transport options reworked: metrô/ônibus/metrô+ônibus replace the generic
 -- 'public_transit'; 'walk' (a pé) dropped. Drop the old check FIRST (the new values
@@ -910,6 +915,18 @@ update public.freelancer_profiles set transport = 'other' where transport = 'wal
 alter table public.freelancer_profiles
   add constraint freelancer_profiles_transport_check
   check (transport in ('own_car','motorcycle','metro','bus','metro_bus','bike','other'));
+
+-- Notification type for the extra-shift invite sent to the freelancer (accept in 24h).
+-- Authoritative re-add of the full type list (last write wins when the whole file runs).
+alter table public.notifications drop constraint if exists notifications_type_check;
+alter table public.notifications add constraint notifications_type_check check (type in (
+  'day_start_reminder','checkout_reminder','checkin_absence','third_late',
+  'bonus_loss_warning','second_no_show','swap_request','availability_cancelled',
+  'coverage_deficit','availability_reminder','schedule_conflict',
+  'weekday_eligibility','manager_checkin_checkout','feedback_received',
+  'feedback_request','schedule_published','schedule_assigned','schedule_removed',
+  'shift_reminder','waitlist_opening','birthday','inactivity_warning','profile_inactivated',
+  'extra_shift_invite'));
 
 -- =============================================================================
 -- ROW LEVEL SECURITY

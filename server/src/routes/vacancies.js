@@ -226,9 +226,10 @@ router.post("/claim", async (req, res) => {
       const ereq = er[0];
       if (!ereq?.requestedBy) return;
       await pool.query(`update public.extra_shift_requests set status='filled', updated_at=now() where id=$1`, [ereq.id]);
+      // Manager sees "aprovado" only — never the freelancer's name (they may change).
       await notify({
-        recipientUserId: ereq.requestedBy, type: "coverage_deficit", title: "Turno extra confirmado",
-        body: `${req.user.name || "Um freelancer"} assumiu seu turno extra de ${shiftPt} em ${date}.`,
+        recipientUserId: ereq.requestedBy, type: "coverage_deficit", title: "Turno extra aprovado",
+        body: `Seu turno extra de ${shiftPt} em ${date} foi aprovado.`,
         data: { extraShiftId: ereq.id, path: "/extra-shifts" },
       });
     }).catch(() => {});

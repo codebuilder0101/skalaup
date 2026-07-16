@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import {
   listExtraShifts, listExtraEligible, requestExtraShift, assignExtraShift,
-  openExtraShift, rejectExtraShift, cancelExtraShift,
+  openExtraShift, rejectExtraShift, cancelExtraShift, cancelExtraInvite,
   type ExtraShiftRequest, type ExtraShiftCandidate, type ExtraShiftStatus,
 } from "@/lib/skalaup/extraShifts";
 import type { ShiftType } from "@/lib/skalaup/types";
@@ -59,10 +59,25 @@ export default function ExtraShiftsPage() {
   const ShiftIcon = ({ s }: { s: string }) =>
     s === "lunch" ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-500" />;
 
+  // Managers only ever see a coarse status ("Aprovado"/"Pendente"), never who is
+  // assigned nor the internal churn. Ops see the granular internal status.
   const statusBadge = (status: ExtraShiftStatus) => {
+    if (isManager) {
+      const mkey =
+        status === "filled" || status === "assigned" ? "approved"
+          : status === "rejected" ? "rejected"
+            : status === "cancelled" ? "cancelled"
+              : "pending";
+      const mtone: Record<string, string> = {
+        approved: "text-emerald-600", pending: "text-amber-600",
+        rejected: "text-rose-600", cancelled: "text-muted-foreground",
+      };
+      return <Badge variant="secondary" className={mtone[mkey]}>{t(`skala.extraShifts.managerStatus.${mkey}`)}</Badge>;
+    }
     const tone: Record<ExtraShiftStatus, string> = {
       pending: "text-amber-600", assigned: "text-emerald-600", opened: "text-blue-600",
-      filled: "text-emerald-600", rejected: "text-rose-600", cancelled: "text-muted-foreground",
+      awaiting_accept: "text-blue-600", filled: "text-emerald-600",
+      rejected: "text-rose-600", cancelled: "text-muted-foreground",
     };
     return <Badge variant="secondary" className={tone[status]}>{t(`skala.extraShifts.status.${status}`)}</Badge>;
   };
@@ -106,7 +121,7 @@ export default function ExtraShiftsPage() {
     if (!assignFor || !pickedId) return;
     const id = assignFor.id;
     setAssignFor(null);
-    await act(id, () => assignExtraShift(id, pickedId), t("skala.extraShifts.assigned"));
+    await act(id, () => assignExtraShift(id, pickedId), t("skala.extraShifts.inviteSent"));
   };
 
   const RequestRow = ({ r, actions }: { r: ExtraShiftRequest; actions?: React.ReactNode }) => (
@@ -232,6 +247,9 @@ export default function ExtraShiftsPage() {
                         <ShiftIcon s={r.shiftType} />
                         <span className="font-medium text-foreground">{dateLabel(r.date)}</span>
                         <span className="text-muted-foreground truncate">· {r.restaurantName}</span>
+                        {isOps && r.status === "awaiting_accept" && r.assignedUserName && (
+                          <span className="text-blue-600 truncate">· {r.assignedUserName}</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {statusBadge(r.status)}
@@ -239,6 +257,12 @@ export default function ExtraShiftsPage() {
                           <Button size="sm" variant="ghost" className="text-destructive" disabled={busy === r.id}
                             onClick={() => act(r.id, () => cancelExtraShift(r.id), t("skala.extraShifts.cancelled"))}>
                             {t("skala.extraShifts.cancel")}
+                          </Button>
+                        )}
+                        {isOps && r.status === "awaiting_accept" && (
+                          <Button size="sm" variant="ghost" className="text-destructive" disabled={busy === r.id}
+                            onClick={() => act(r.id, () => cancelExtraInvite(r.id), t("skala.extraShifts.inviteCancelled"))}>
+                            {t("skala.extraShifts.cancelInvite")}
                           </Button>
                         )}
                       </div>

@@ -25,6 +25,7 @@ async function readConfig() {
             furo_cover_points as fc, monthly_target_shifts as mts, swap_scoring_cap as cap,
             manual_score_monthly_cap as mscap, late_discount_amount as ldc,
             base_pay_per_shift as bp, bonus_pay_per_shift as bnp, weekend_bonus_enabled as wbe,
+            checkin_geofence_enabled as cge, checkin_radius_m as crm,
             star_cutoffs as cutoffs, custom_score_criteria as criteria
        from public.app_settings where id = 1`,
   );
@@ -50,6 +51,9 @@ async function readConfig() {
     basePayPerShift: Number(s?.bp ?? 60),
     bonusPayPerShift: Number(s?.bnp ?? 75),
     weekendBonusEnabled: (s?.wbe ?? true) !== false,
+    // Geolocation check-in (client round 2026-07-19): global on/off + radius (m).
+    checkinGeofenceEnabled: (s?.cge ?? true) !== false,
+    checkinRadiusM: Number(s?.crm ?? 150),
     customCriteria,
   };
 }
@@ -123,6 +127,8 @@ router.put("/score", requireOps, async (req, res) => {
     if (isNum(b.basePayPerShift)) colUpdates.base_pay_per_shift = Math.max(0, Number(b.basePayPerShift));
     if (isNum(b.bonusPayPerShift)) colUpdates.bonus_pay_per_shift = Math.max(0, Number(b.bonusPayPerShift));
     if (typeof b.weekendBonusEnabled === "boolean") colUpdates.weekend_bonus_enabled = b.weekendBonusEnabled;
+    if (typeof b.checkinGeofenceEnabled === "boolean") colUpdates.checkin_geofence_enabled = b.checkinGeofenceEnabled;
+    if (isNum(b.checkinRadiusM)) colUpdates.checkin_radius_m = Math.max(1, Math.round(Number(b.checkinRadiusM)));
 
     // Merge jsonb overrides on top of what's stored.
     const existing = (await one(`select score_points from public.app_settings where id = 1`))?.score_points || {};

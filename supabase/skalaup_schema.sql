@@ -888,6 +888,14 @@ alter table public.notifications add constraint notifications_type_check check (
 alter table public.app_settings add column if not exists furo_cover_points   numeric(6,2) not null default 3;
 alter table public.app_settings add column if not exists weekend_target_points numeric(6,2) not null default 5;
 
+-- Geolocation check-in (client round 2026-07-19): a global on/off switch + a radius
+-- (metres) the administrator edits in Configurações. Enforcement measures the
+-- freelancer's phone GPS against the restaurant's latitude/longitude (set per
+-- restaurant) and blocks a self check-in outside the radius. Restaurants without
+-- coordinates are not geofenced (can't measure distance), so they fall back to manual.
+alter table public.app_settings add column if not exists checkin_geofence_enabled boolean not null default true;
+alter table public.app_settings add column if not exists checkin_radius_m integer not null default 150;
+
 -- E3 — an extra shift opened as a vaga links back to its request, so that when a
 -- freelancer actually claims the vaga we can confirm to the requesting manager.
 alter table public.demand_overrides

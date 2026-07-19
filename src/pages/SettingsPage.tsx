@@ -235,6 +235,24 @@ function ScoreConfigCard() {
         </div>
       </div>
 
+      {/* Geolocation check-in (client round 2026-07-19) — global on/off + radius. */}
+      <div>
+        <Label className="text-sm font-medium">{t("skala.settings.checkin.title")}</Label>
+        <p className="text-xs text-muted-foreground mb-2">{t("skala.settings.checkin.subtitle")}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-foreground">{t("skala.settings.checkin.enabled")}</span>
+            <Switch checked={cfg.checkinGeofenceEnabled}
+              onCheckedChange={(v) => setCfg((c) => (c ? { ...c, checkinGeofenceEnabled: v } : c))} />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-foreground" title={t("skala.settings.checkin.radiusHint")}>{t("skala.settings.checkin.radius")}</span>
+            <Input type="number" min={1} step={1} className="w-24" value={cfg.checkinRadiusM}
+              onChange={(e) => setCfg((c) => (c ? { ...c, checkinRadiusM: Number(e.target.value) || 0 } : c))} />
+          </div>
+        </div>
+      </div>
+
       {/* Custom criteria (R15) — freely-defined manual scoring rules. */}
       <div className="border-t pt-5">
         <div className="flex items-center justify-between gap-3">

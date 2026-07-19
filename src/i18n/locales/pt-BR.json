@@ -1425,6 +1425,13 @@
         "bonusPay": "Valor com bônus por turno (R$)",
         "weekendBonus": "Bonificação de fim de semana",
         "weekendBonusHint": "Quando ativa, quem cumpre os turnos obrigatórios do fim de semana recebe todos os turnos daquela semana no valor com bônus."
+      },
+      "checkin": {
+        "title": "Check-in por localização",
+        "subtitle": "Exige que o freelancer esteja perto do restaurante para bater o ponto. Use a localização de cada restaurante no cadastro dele.",
+        "enabled": "Exigir localização no check-in",
+        "radius": "Raio permitido (metros)",
+        "radiusHint": "Distância máxima do restaurante para liberar o check-in. Padrão de 150 metros."
       }
     },
     "common": {
@@ -1491,7 +1498,17 @@
       "addDinnerTime": "Adicionar horário de janta",
       "slotLabelPlaceholder": "Rótulo (opcional)",
       "noSlots": "Nenhum horário ainda.",
-      "errDuplicate": "Há horários idênticos no mesmo período."
+      "errDuplicate": "Há horários idênticos no mesmo período.",
+      "sectionLocation": "Localização (check-in)",
+      "locationHint": "Usada no check-in por localização. Toque em usar minha localização estando no restaurante, ou preencha as coordenadas. Sem localização, o restaurante não exige proximidade.",
+      "latitude": "Latitude",
+      "longitude": "Longitude",
+      "useCurrentLocation": "Usar minha localização",
+      "geoCaptured": "Localização capturada.",
+      "geoError": "Não foi possível obter a localização. Verifique a permissão do navegador.",
+      "geoUnsupported": "Este dispositivo não suporta localização.",
+      "errLatLngBoth": "Preencha latitude e longitude, ou deixe as duas vazias.",
+      "errLatLngRange": "Latitude deve estar entre -90 e 90 e longitude entre -180 e 180."
     },
     "freelancers": {
       "title": "Equipe",

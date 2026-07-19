@@ -1425,6 +1425,13 @@
         "bonusPay": "Bonus pay per shift (R$)",
         "weekendBonus": "Weekend bonus",
         "weekendBonusHint": "When active, whoever completes the mandatory weekend shifts is paid the bonus rate for every shift that week."
+      },
+      "checkin": {
+        "title": "Location-based check-in",
+        "subtitle": "Requires the freelancer to be near the restaurant to check in. Set each restaurant's location in its form.",
+        "enabled": "Require location on check-in",
+        "radius": "Allowed radius (metres)",
+        "radiusHint": "Maximum distance from the restaurant to allow check-in. Default is 150 metres."
       }
     },
     "common": {
@@ -1491,7 +1498,17 @@
       "addDinnerTime": "Add dinner time",
       "slotLabelPlaceholder": "Label (optional)",
       "noSlots": "No times yet.",
-      "errDuplicate": "Identical shift times within the same period."
+      "errDuplicate": "Identical shift times within the same period.",
+      "sectionLocation": "Location (check-in)",
+      "locationHint": "Used for location-based check-in. Tap use my location while at the restaurant, or fill in the coordinates. Without a location, the restaurant does not require proximity.",
+      "latitude": "Latitude",
+      "longitude": "Longitude",
+      "useCurrentLocation": "Use my location",
+      "geoCaptured": "Location captured.",
+      "geoError": "Could not get the location. Check the browser permission.",
+      "geoUnsupported": "This device does not support location.",
+      "errLatLngBoth": "Fill in both latitude and longitude, or leave both empty.",
+      "errLatLngRange": "Latitude must be between -90 and 90 and longitude between -180 and 180."
     },
     "freelancers": {
       "title": "Team",

@@ -11,6 +11,20 @@ import type { AttendanceShift, ShiftType } from "@/lib/skalaup/types";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+// Best-effort phone GPS for the geofenced check-in. Resolves null on any failure
+// (no support, permission denied, timeout) — the server decides whether the
+// missing location blocks the check-in, so we never guess here.
+function getCurrentCoords(): Promise<{ latitude: number; longitude: number } | null> {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  });
+}
+
 export default function CheckinPage() {
   const { t, i18n } = useTranslation();
   const lng = i18n.language || "pt-BR";
@@ -47,7 +61,8 @@ export default function CheckinPage() {
 
   const onCheckin = async (s: AttendanceShift) => {
     setBusy(s.assignmentId);
-    const { data, error } = await checkin(s.assignmentId);
+    const coords = await getCurrentCoords(); // geofence: server enforces if required
+    const { data, error } = await checkin(s.assignmentId, coords);
     setBusy(null);
     if (error) { toast.error(error.message); return; }
     if (data && data.latenessCategory && data.latenessCategory !== "none") {

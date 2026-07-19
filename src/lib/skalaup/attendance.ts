@@ -33,8 +33,17 @@ export async function listMyShifts(params: { from?: string; to?: string } = {}):
   return wrap(api.get<AttendanceShift[]>(`/attendance/mine${qs ? `?${qs}` : ""}`), []);
 }
 
-export async function checkin(assignmentId: string): Promise<Result<AttendanceMutationResult | null>> {
-  return wrapMaybe(api.post<AttendanceMutationResult>("/attendance/checkin", { assignmentId }));
+// Optional GPS coordinates attached to a self check-in for the geofence check.
+export interface CheckinCoords { latitude: number; longitude: number; }
+
+export async function checkin(
+  assignmentId: string,
+  coords?: CheckinCoords | null,
+): Promise<Result<AttendanceMutationResult | null>> {
+  const body = coords
+    ? { assignmentId, latitude: coords.latitude, longitude: coords.longitude }
+    : { assignmentId };
+  return wrapMaybe(api.post<AttendanceMutationResult>("/attendance/checkin", body));
 }
 
 export async function checkout(assignmentId: string): Promise<Result<AttendanceMutationResult | null>> {

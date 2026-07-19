@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, MapPin, Store } from "lucide-react";
+import { Plus, Pencil, Trash2, MapPin, Store, Crosshair, Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,6 +31,9 @@ type FormState = {
   address: string;
   cep: string;
   cnpj: string;
+  // geofenced check-in location — empty string = not geocoded (no geofence)
+  latitude: string;
+  longitude: string;
   active: boolean;
   // shift times (HH:MM) — each meal period can hold multiple staggered slots
   lunchSlots: SlotRow[];
@@ -46,7 +49,7 @@ type FormState = {
 };
 
 const emptyForm: FormState = {
-  name: "", address: "", cep: "", cnpj: "", active: true,
+  name: "", address: "", cep: "", cnpj: "", latitude: "", longitude: "", active: true,
   lunchSlots: [],
   dinnerSlots: [],
   basePayPerShift: "", bonusPayPerShift: "",
@@ -88,6 +91,29 @@ export default function RestaurantsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [locating, setLocating] = useState(false);
+
+  // Fill lat/lng from the device GPS — the admin taps this while standing at the
+  // restaurant so the geofence has an accurate centre point.
+  const useMyLocation = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      toast.error(t("skala.restaurants.geoUnsupported")); return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((f) => ({
+          ...f,
+          latitude: pos.coords.latitude.toFixed(6),
+          longitude: pos.coords.longitude.toFixed(6),
+        }));
+        setLocating(false);
+        toast.success(t("skala.restaurants.geoCaptured"));
+      },
+      () => { setLocating(false); toast.error(t("skala.restaurants.geoError")); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+    );
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -107,6 +133,7 @@ export default function RestaurantsPage() {
         .map((s) => ({ label: s.label ?? "", startTime: s.startTime, endTime: s.endTime }));
     setForm({
       id: r.id, name: r.name, address: r.address ?? "", cep: r.cep ?? "", cnpj: r.cnpj ?? "",
+      latitude: toStr(r.latitude), longitude: toStr(r.longitude),
       active: r.active,
       lunchSlots: toSlots("lunch"),
       dinnerSlots: toSlots("dinner"),
@@ -150,6 +177,16 @@ export default function RestaurantsPage() {
       toast.error(t("skala.restaurants.errCustomRequired")); return;
     }
 
+    // Geofence location — set both or neither, and within valid earth ranges.
+    const latS = form.latitude.trim(), lngS = form.longitude.trim();
+    if ((latS === "") !== (lngS === "")) { toast.error(t("skala.restaurants.errLatLngBoth")); return; }
+    if (latS !== "") {
+      const la = Number(latS), lo = Number(lngS);
+      if (!Number.isFinite(la) || !Number.isFinite(lo) || la < -90 || la > 90 || lo < -180 || lo > 180) {
+        toast.error(t("skala.restaurants.errLatLngRange")); return;
+      }
+    }
+
     const shiftTemplates: ShiftTemplate[] = [];
     for (const { type, list } of periods) {
       for (const s of list) {
@@ -164,6 +201,8 @@ export default function RestaurantsPage() {
       address: form.address.trim() || null,
       cep: form.cep.trim() || null,
       cnpj: form.cnpj.trim() || null,
+      latitude: toNum(form.latitude),
+      longitude: toNum(form.longitude),
       active: form.active,
       basePayPerShift: toNum(form.basePayPerShift),
       bonusPayPerShift: toNum(form.bonusPayPerShift),
@@ -277,6 +316,38 @@ export default function RestaurantsPage() {
                 />
               </div>
             </div>
+            {/* --- Geofenced check-in location --- */}
+            <div className="space-y-3 pt-3 border-t">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4" />{t("skala.restaurants.sectionLocation")}
+                </h4>
+                <Button type="button" size="sm" variant="outline" onClick={useMyLocation} disabled={locating}>
+                  {locating ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Crosshair className="w-3.5 h-3.5 mr-1" />}
+                  {t("skala.restaurants.useCurrentLocation")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("skala.restaurants.locationHint")}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>{t("skala.restaurants.latitude")}</Label>
+                  <Input
+                    type="number" step="any" inputMode="decimal" placeholder="-23.561684"
+                    value={form.latitude}
+                    onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("skala.restaurants.longitude")}</Label>
+                  <Input
+                    type="number" step="any" inputMode="decimal" placeholder="-46.655981"
+                    value={form.longitude}
+                    onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
               <Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} />
               <Label>{t("skala.common.active")}</Label>

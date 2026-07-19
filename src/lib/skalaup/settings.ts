@@ -22,6 +22,9 @@ export interface ScoreSettings {
   basePayPerShift: number;
   bonusPayPerShift: number;
   weekendBonusEnabled: boolean;
+  // Geolocation check-in (client round 2026-07-19): global on/off + radius in metres.
+  checkinGeofenceEnabled: boolean;
+  checkinRadiusM: number;
   customCriteria: CustomCriterion[];
 }
 

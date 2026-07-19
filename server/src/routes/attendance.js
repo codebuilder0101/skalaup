@@ -10,9 +10,12 @@ import {
 import {
   monthRefOf, ensurePayrollPeriod, resolvePaySettings, noShowDiscountAmount,
 } from "../payroll.js";
+import { evaluateCheckinGeofence } from "../geofence.js";
 
 // Check-in / check-out (§4), lateness (§4.1, §6) and no-shows / furos (§5).
-// No geolocation: check-ins are recorded manually with the server timestamp.
+// Self check-ins are geofenced (client round 2026-07-19): the freelancer's phone
+// GPS must be within the configured radius of the restaurant. Ops recording on a
+// freelancer's behalf, and restaurants without coordinates, stay manual.
 const router = Router();
 router.use(requireAuth);
 const requireOps = requireRole("coordinator", "administrator");
@@ -192,15 +195,17 @@ router.get("/mine", async (req, res) => {
   }
 });
 
-// POST /api/attendance/checkin { assignmentId }  — freelancer self check-in (or ops).
+// POST /api/attendance/checkin { assignmentId, latitude?, longitude? }
+// — freelancer self check-in (geofenced) or ops (manual, on behalf).
 router.post("/checkin", async (req, res) => {
   try {
-    const { assignmentId } = req.body || {};
+    const { assignmentId, latitude, longitude } = req.body || {};
     if (!assignmentId) return res.status(400).json({ error: "assignmentId is required" });
 
     const a = await one(
       `select a.id, a.user_id as "userId", a.restaurant_id as "restaurantId",
               a.date::text as date, a.status,
+              r.latitude as "restLat", r.longitude as "restLng",
               ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo')) as "scheduledStart",
               extract(epoch from (now() - ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo')))) / 60.0 as "lateMin"
          from public.schedule_assignments a
@@ -225,6 +230,23 @@ router.post("/checkin", async (req, res) => {
       }
     }
 
+    // Geofence (client round 2026-07-19) — enforced only for the freelancer's own
+    // check-in. Ops recording on behalf stay 'manual' and skip the location check.
+    let method = "manual", checkinLat = null, checkinLng = null, distanceM = null;
+    if (self) {
+      const geo = await one(
+        `select checkin_geofence_enabled as "enabled", checkin_radius_m as "radius"
+           from public.app_settings where id = 1`,
+      );
+      const g = evaluateCheckinGeofence({
+        enabled: (geo?.enabled ?? true) !== false,
+        radiusM: Number(geo?.radius ?? 150),
+        restLat: a.restLat, restLng: a.restLng, lat: latitude, lng: longitude,
+      });
+      if (!g.ok) return res.status(g.distanceM != null ? 403 : 400).json({ message: g.error });
+      method = g.method; checkinLat = g.latitude; checkinLng = g.longitude; distanceM = g.distanceM;
+    }
+
     const existing = await one(
       `select checkin_at as "checkinAt" from public.shift_attendance where assignment_id = $1`,
       [assignmentId],
@@ -239,12 +261,15 @@ router.post("/checkin", async (req, res) => {
     await pool.query(
       `insert into public.shift_attendance
          (assignment_id, user_id, restaurant_id, scheduled_start, checkin_at,
-          checkin_method, lateness_minutes, lateness_category, no_show)
-       values ($1,$2,$3,$4, now(), 'manual', $5, $6, false)
+          checkin_method, checkin_latitude, checkin_longitude, checkin_distance_m,
+          lateness_minutes, lateness_category, no_show)
+       values ($1,$2,$3,$4, now(), $5,$6,$7,$8, $9,$10, false)
        on conflict (assignment_id) do update set
-         checkin_at = now(), checkin_method = 'manual',
-         lateness_minutes = $5, lateness_category = $6, no_show = false`,
-      [assignmentId, a.userId, a.restaurantId, a.scheduledStart, minutes, late.category],
+         checkin_at = now(), checkin_method = $5,
+         checkin_latitude = $6, checkin_longitude = $7, checkin_distance_m = $8,
+         lateness_minutes = $9, lateness_category = $10, no_show = false`,
+      [assignmentId, a.userId, a.restaurantId, a.scheduledStart,
+       method, checkinLat, checkinLng, distanceM, minutes, late.category],
     );
 
     await applyLatenessScore({

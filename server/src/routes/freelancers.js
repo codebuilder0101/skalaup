@@ -60,6 +60,45 @@ const SELECT = `
   from public.users u
   left join public.freelancer_profiles p on p.user_id = u.id`;
 
+// --- Freelancer self-registration allow-list (client 2026-07-19) ---
+// An admin/coordinator pre-registers a freelancer's email here; the freelancer then
+// self-registers with that email on the public /register page (auth.js). These routes
+// MUST stay above the "/:id" routes so "authorized-emails" is not read as an id.
+router.get("/authorized-emails", requireOps, async (_req, res) => {
+  const { rows } = await pool.query(
+    `select a.id, a.email, a.created_at as "createdAt", a.claimed_at as "claimedAt",
+            u.id as "userId", u.name as "userName", u.status as "userStatus"
+       from public.authorized_freelancer_emails a
+       left join public.users u on lower(u.email) = a.email
+      order by a.created_at desc`,
+  );
+  res.json(rows);
+});
+
+router.post("/authorized-emails", requireOps, async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: "E-mail inválido." });
+  }
+  try {
+    const row = await one(
+      `insert into public.authorized_freelancer_emails (email, created_by)
+       values ($1, $2)
+       returning id, email, created_at as "createdAt", claimed_at as "claimedAt"`,
+      [email, req.user.sub],
+    );
+    res.status(201).json(row);
+  } catch (e) {
+    if (String(e.code) === "23505") return res.status(409).json({ error: "Este e-mail já está na lista." });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete("/authorized-emails/:id", requireOps, async (req, res) => {
+  await pool.query(`delete from public.authorized_freelancer_emails where id = $1`, [req.params.id]);
+  res.json({ ok: true });
+});
+
 // Roster — coordinator or administrator (§2.4).
 router.get("/", requireRole("coordinator", "administrator"), async (_req, res) => {
   const { rows } = await pool.query(

@@ -72,16 +72,21 @@ router.post("/change-password", requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/auth/register  — public self sign-up. The user picks a role, but the
-// account is created as `pending`: it CANNOT log in until a coordinator approves.
-// No token is returned (no auto-login).
+// POST /api/auth/register  — public self sign-up.
+// Freelancers: only a pre-authorized email (allow-listed by an admin, client
+// 2026-07-19) may register. Because the admin already authorized them, the account
+// is created ACTIVE and the freelancer is auto-logged-in (a token is returned) to go
+// straight to completing their profile. They complete the full ficha later in /profile.
+// Coordinator / restaurant_manager: unchanged — created `pending`, no token, must be
+// approved by an admin before logging in.
 router.post("/register", async (req, res) => {
   const name = String(req.body?.name || "").trim();
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
   const requested = String(req.body?.role || "freelancer");
   const role = SIGNUP_ROLES.includes(requested) ? requested : "freelancer";
-  // Optional freelancer registration "ficha" fields (CPF, PIX, contacts, address).
+  // Optional freelancer registration "ficha" fields (kept for backward compat; the
+  // simplified sign-up no longer sends them — the freelancer fills the ficha in /profile).
   const phone = req.body?.phone ? String(req.body.phone).trim() : null;
   const cpf = req.body?.cpf ? String(req.body.cpf).trim() : null;
   const pixKey = req.body?.pixKey ? String(req.body.pixKey).trim() : null;
@@ -92,15 +97,25 @@ router.post("/register", async (req, res) => {
   if (!name || !email || !password) return res.status(400).json({ error: "Missing fields" });
   if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
+  // Freelancers must have been pre-authorized by an admin. Authorized ones start active.
+  let authorized = null;
+  if (role === "freelancer") {
+    authorized = await one(
+      `select id from public.authorized_freelancer_emails where email = $1`, [email],
+    );
+    if (!authorized) return res.status(403).json({ error: "auth.notAuthorized", code: "not_authorized" });
+  }
+  const status = role === "freelancer" ? "active" : "pending";
+
   const hash = await bcrypt.hash(password, 10);
   try {
     const row = await one(
       `insert into public.users (name, email, password, role, status, phone)
-       values ($1,$2,$3,$4,'pending',$5) returning ${SAFE_USER}`,
-      [name, email, hash, role, phone],
+       values ($1,$2,$3,$4,$5,$6) returning ${SAFE_USER}`,
+      [name, email, hash, role, status, phone],
     );
-    // Freelancers get a profile "ficha" seeded with their registration fields.
     if (role === "freelancer") {
+      // Seed an (empty-by-default) ficha row so the freelancer can complete it in /profile.
       await pool.query(
         `insert into public.freelancer_profiles
            (user_id, member_type, cpf, pix_key, whatsapp, home_address, home_cep)
@@ -110,6 +125,13 @@ router.post("/register", async (req, res) => {
            home_address = excluded.home_address, home_cep = excluded.home_cep`,
         [row.id, cpf, pixKey, whatsapp, homeAddress, homeCep],
       );
+      await pool.query(
+        `update public.authorized_freelancer_emails set claimed_at = now() where id = $1`,
+        [authorized.id],
+      );
+      // Active + authorized → auto-login so they land in the app to finish their ficha.
+      const user = { id: row.id, name: row.name, email: row.email, role: row.role };
+      return res.status(201).json({ token: signToken(user), user: { ...user, mustChangePassword: false } });
     }
     res.status(201).json({ pending: true, user: row });
   } catch (e) {

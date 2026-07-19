@@ -1513,6 +1513,16 @@
     "freelancers": {
       "title": "Equipe",
       "subtitle": "Perfis, pontuação e níveis de estrela de membros e visitantes.",
+      "authEmails": {
+        "button": "E-mails autorizados",
+        "title": "E-mails autorizados",
+        "hint": "Cadastre o e-mail do freelancer. Ele se cadastra sozinho na tela de acesso usando esse e-mail, cria a própria senha e preenche a ficha depois no Perfil.",
+        "add": "Adicionar",
+        "added": "E-mail adicionado à lista.",
+        "empty": "Nenhum e-mail autorizado ainda.",
+        "invited": "Aguardando cadastro",
+        "registered": "Já cadastrado"
+      },
       "empty": "Nenhum membro da equipe cadastrado ainda.",
       "member": "Membro",
       "visitor": "Visitante",
@@ -1852,6 +1862,8 @@
       "errPending": "Sua conta aguarda aprovação da coordenadora.",
       "errRejected": "Seu cadastro não foi aprovado.",
       "errInactive": "Sua conta está inativa. Fale com a coordenadora.",
+      "errNotAuthorized": "Este e-mail não está autorizado. Fale com o coordenador para liberar o seu cadastro.",
+      "freelancerAuthorizedHint": "Use o e-mail que o coordenador cadastrou. Você cria a sua senha agora e completa a ficha depois, no Perfil.",
       "emailExists": "Já existe uma conta com este e-mail. Tente entrar ou redefinir a senha.",
       "cpf": "CPF",
       "pixKey": "Chave PIX",

@@ -909,6 +909,20 @@ alter table public.app_settings add column if not exists checkin_radius_m intege
 -- This only sets the column default; it never overrides a value an admin already set.
 alter table public.app_settings alter column checkin_radius_m set default 500;
 
+-- Freelancer self-registration allow-list (client 2026-07-19): an admin/coordinator
+-- pre-registers a freelancer's email; the freelancer then signs up themselves on the
+-- public register page using that email and sets their own password. Only allow-listed
+-- emails may self-register as freelancers, and such accounts are created active (the
+-- admin already authorized them) — no separate approval. claimed_at is stamped when the
+-- freelancer completes the sign-up.
+create table if not exists public.authorized_freelancer_emails (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz not null default now(),
+  email       text not null unique,
+  created_by  uuid references public.users(id) on delete set null,
+  claimed_at  timestamptz
+);
+
 -- E3 — an extra shift opened as a vaga links back to its request, so that when a
 -- freelancer actually claims the vaga we can confirm to the requesting manager.
 alter table public.demand_overrides

@@ -10,9 +10,6 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { SUPPORTED_LANGUAGES, setStoredLanguage, type SupportedLanguage } from "@/i18n/config";
-import {
-  maskCpf, maskCep, maskPhone, isValidCpf, isValidCep, isValidPhone,
-} from "@/lib/br-format";
 
 type Mode = "login" | "register";
 const SIGNUP_ROLES = ["freelancer", "restaurant_manager", "coordinator"] as const;
@@ -28,13 +25,6 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<string>("freelancer");
-  // Freelancer registration "ficha" fields (only collected when role === freelancer).
-  const [phone, setPhone] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [pixKey, setPixKey] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [homeAddress, setHomeAddress] = useState("");
-  const [homeCep, setHomeCep] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -60,6 +50,7 @@ export default function AuthPage() {
     if (msg === "auth.pending") return t("skala.auth.errPending");
     if (msg === "auth.rejected") return t("skala.auth.errRejected");
     if (msg === "auth.inactive") return t("skala.auth.errInactive");
+    if (msg === "auth.notAuthorized") return t("skala.auth.errNotAuthorized");
     if (msg && /already exists/i.test(msg)) return t("skala.auth.emailExists");
     return msg || t("skala.auth.error");
   };
@@ -75,30 +66,16 @@ export default function AuthPage() {
       if (res.success) navigate(roleHomePath[user?.role ?? "freelancer"], { replace: true });
       else setError(roleError(res.error));
     } else {
-      // Light client-side validation for the optional Brazilian-format fields.
-      if (role === "freelancer") {
-        if (cpf && !isValidCpf(cpf)) { setSubmitting(false); setError(t("skala.auth.invalidCpf")); return; }
-        if (phone && !isValidPhone(phone)) { setSubmitting(false); setError(t("skala.auth.invalidPhone")); return; }
-        if (whatsapp && !isValidPhone(whatsapp)) { setSubmitting(false); setError(t("skala.auth.invalidWhatsapp")); return; }
-        if (homeCep && !isValidCep(homeCep)) { setSubmitting(false); setError(t("skala.auth.invalidCep")); return; }
-      }
-      const res = await register({
-        name: name.trim(), email: email.trim(), password, role,
-        ...(role === "freelancer" ? {
-          phone: phone.trim() || undefined,
-          cpf: cpf.trim() || undefined,
-          pixKey: pixKey.trim() || undefined,
-          whatsapp: whatsapp.trim() || undefined,
-          homeAddress: homeAddress.trim() || undefined,
-          homeCep: homeCep.trim() || undefined,
-        } : {}),
-      });
+      const res = await register({ name: name.trim(), email: email.trim(), password, role });
       setSubmitting(false);
       if (res.success) {
-        setNotice(t("skala.auth.pendingNotice"));
-        setMode("login");
-        setName(""); setPassword("");
-        setPhone(""); setCpf(""); setPixKey(""); setWhatsapp(""); setHomeAddress(""); setHomeCep("");
+        if (res.pending) {
+          // Coordinator / manager sign-up → awaits admin approval.
+          setNotice(t("skala.auth.pendingNotice"));
+          setMode("login");
+          setName(""); setPassword("");
+        }
+        // Authorized freelancer → auto-logged-in; the redirect at the top handles it.
       } else {
         setError(roleError(res.error));
       }
@@ -182,43 +159,7 @@ export default function AuthPage() {
                 </div>
 
                 {role === "freelancer" && (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="cpf">{t("skala.auth.cpf")}</Label>
-                        <Input id="cpf" inputMode="numeric" placeholder="000.000.000-00"
-                          value={cpf} onChange={(e) => setCpf(maskCpf(e.target.value))} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="pix">{t("skala.auth.pixKey")}</Label>
-                        <Input id="pix" value={pixKey}
-                          placeholder={t("skala.auth.pixKeyPlaceholder")}
-                          onChange={(e) => setPixKey(e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="phone">{t("skala.auth.phone")}</Label>
-                        <Input id="phone" inputMode="tel" placeholder="(00) 00000-0000"
-                          value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="whatsapp">{t("skala.auth.whatsapp")}</Label>
-                        <Input id="whatsapp" inputMode="tel" placeholder="(00) 00000-0000"
-                          value={whatsapp} onChange={(e) => setWhatsapp(maskPhone(e.target.value))} />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="address">{t("skala.auth.address")}</Label>
-                      <Input id="address" value={homeAddress}
-                        onChange={(e) => setHomeAddress(e.target.value)} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="cep">{t("skala.auth.cep")}</Label>
-                      <Input id="cep" inputMode="numeric" placeholder="00000-000"
-                        value={homeCep} onChange={(e) => setHomeCep(maskCep(e.target.value))} />
-                    </div>
-                  </>
+                  <p className="text-xs text-muted-foreground">{t("skala.auth.freelancerAuthorizedHint")}</p>
                 )}
               </>
             )}

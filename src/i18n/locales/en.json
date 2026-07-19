@@ -1513,6 +1513,16 @@
     "freelancers": {
       "title": "Team",
       "subtitle": "Profiles, scores and star levels of members and visitors.",
+      "authEmails": {
+        "button": "Authorized emails",
+        "title": "Authorized emails",
+        "hint": "Register the freelancer's email. They sign up themselves on the login page using that email, set their own password and complete their profile later.",
+        "add": "Add",
+        "added": "Email added to the list.",
+        "empty": "No authorized emails yet.",
+        "invited": "Awaiting sign-up",
+        "registered": "Registered"
+      },
       "empty": "No team members registered yet.",
       "member": "Member",
       "visitor": "Visitor",
@@ -1852,6 +1862,8 @@
       "errPending": "Your account is awaiting coordinator approval.",
       "errRejected": "Your registration was not approved.",
       "errInactive": "Your account is inactive. Contact the coordinator.",
+      "errNotAuthorized": "This email is not authorized. Ask the coordinator to enable your sign-up.",
+      "freelancerAuthorizedHint": "Use the email your coordinator registered. You set your own password now and complete your profile later, in Profile.",
       "emailExists": "An account with this email already exists. Try logging in or resetting your password.",
       "cpf": "CPF",
       "pixKey": "PIX key",

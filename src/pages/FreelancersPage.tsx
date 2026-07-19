@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   listFreelancers, createFreelancer, updateFreelancer, deleteFreelancer, setFreelancerStatus,
-  type FreelancerWithProfile,
+  listAuthorizedEmails, addAuthorizedEmail, removeAuthorizedEmail,
+  type FreelancerWithProfile, type AuthorizedEmail,
 } from "@/lib/skalaup/freelancers";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
 import { addScoreEvent } from "@/lib/skalaup/score";
@@ -64,6 +65,37 @@ export default function FreelancersPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [tempPwd, setTempPwd] = useState<string | null>(null);
+
+  // Freelancer self-registration allow-list (client 2026-07-19): admin pre-registers
+  // emails; the freelancer then self-registers with that email on the sign-up page.
+  const [emailsOpen, setEmailsOpen] = useState(false);
+  const [authEmails, setAuthEmails] = useState<AuthorizedEmail[]>([]);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+
+  const loadAuthEmails = useCallback(async () => {
+    const { data, error } = await listAuthorizedEmails();
+    if (error) { toast.error(error.message); return; }
+    setAuthEmails(data);
+  }, []);
+
+  const openEmails = () => { setNewEmail(""); setEmailsOpen(true); void loadAuthEmails(); };
+
+  const addEmail = async () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!email) return;
+    setEmailBusy(true);
+    const { data, error } = await addAuthorizedEmail(email);
+    setEmailBusy(false);
+    if (error) { toast.error(error.message); return; }
+    if (data) { setAuthEmails((xs) => [data, ...xs]); setNewEmail(""); toast.success(t("skala.freelancers.authEmails.added")); }
+  };
+
+  const removeEmail = async (id: string) => {
+    const { error } = await removeAuthorizedEmail(id);
+    if (error) { toast.error(error.message); return; }
+    setAuthEmails((xs) => xs.filter((x) => x.id !== id));
+  };
 
   // Manual score adjustment (R2 item 3) — positive-only points + required reason.
   // R15: optionally apply a coordinator-defined custom criterion (may be negative).
@@ -284,7 +316,12 @@ export default function FreelancersPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1">{t("skala.freelancers.subtitle")}</p>
           </div>
-          <Button onClick={openCreate}><Plus className="w-4 h-4 mr-1.5" />{t("skala.freelancers.add")}</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={openEmails}>
+              <Mail className="w-4 h-4 mr-1.5" />{t("skala.freelancers.authEmails.button")}
+            </Button>
+            <Button onClick={openCreate}><Plus className="w-4 h-4 mr-1.5" />{t("skala.freelancers.add")}</Button>
+          </div>
         </div>
 
         {loading ? (
@@ -385,6 +422,50 @@ export default function FreelancersPage() {
           </div>
         )}
       </div>
+
+      {/* Authorized emails — pre-register freelancer emails for self sign-up. */}
+      <Dialog open={emailsOpen} onOpenChange={setEmailsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="w-4 h-4" />{t("skala.freelancers.authEmails.title")}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{t("skala.freelancers.authEmails.hint")}</p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="email" placeholder="email@exemplo.com" value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addEmail(); } }}
+            />
+            <Button onClick={() => void addEmail()} disabled={emailBusy || !newEmail.trim()}>
+              <Plus className="w-4 h-4 mr-1.5" />{t("skala.freelancers.authEmails.add")}
+            </Button>
+          </div>
+          <div className="max-h-72 overflow-y-auto space-y-2">
+            {authEmails.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">{t("skala.freelancers.authEmails.empty")}</p>
+            ) : authEmails.map((a) => (
+              <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{a.email}</p>
+                  {a.claimedAt || a.userId ? (
+                    <Badge variant="secondary" className="mt-0.5">{t("skala.freelancers.authEmails.registered")}</Badge>
+                  ) : (
+                    <Badge variant="outline" className="mt-0.5">{t("skala.freelancers.authEmails.invited")}</Badge>
+                  )}
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => void removeEmail(a.id)} title={t("skala.common.delete")}>
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailsOpen(false)}>{t("skala.common.close")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

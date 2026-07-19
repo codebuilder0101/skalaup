@@ -26,6 +26,39 @@ export async function getFreelancer(userId: string): Promise<Result<FreelancerWi
   return wrap(api.get<FreelancerWithProfile>(`/freelancers/${userId}`), null);
 }
 
+// Freelancer self-registration allow-list (client 2026-07-19). An admin pre-registers
+// emails; the freelancer then self-registers with that email on the sign-up page.
+export type AuthorizedEmail = {
+  id: string;
+  email: string;
+  createdAt: string;
+  claimedAt: string | null;
+  userId: string | null;
+  userName: string | null;
+  userStatus: string | null;
+};
+
+export async function listAuthorizedEmails(): Promise<Result<AuthorizedEmail[]>> {
+  return wrap(api.get<AuthorizedEmail[]>("/freelancers/authorized-emails"), []);
+}
+
+export async function addAuthorizedEmail(email: string): Promise<Result<AuthorizedEmail | null>> {
+  try {
+    return { data: await api.post<AuthorizedEmail>("/freelancers/authorized-emails", { email }), error: null };
+  } catch (e) {
+    return { data: null, error: { message: (e as Error).message } };
+  }
+}
+
+export async function removeAuthorizedEmail(id: string): Promise<{ error: { message: string } | null }> {
+  try {
+    await api.del(`/freelancers/authorized-emails/${id}`);
+    return { error: null };
+  } catch (e) {
+    return { error: { message: (e as Error).message } };
+  }
+}
+
 export type ProfileInput = {
   memberType?: MemberType;
   photoUrl?: string | null;

@@ -82,9 +82,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (input: RegisterInput): Promise<RegisterResult> => {
     try {
-      // Account is created as `pending` — no token is returned; the user must be
-      // approved by a coordinator before logging in.
-      await api.post<{ pending: boolean }>("/auth/register", input);
+      // Freelancers with a pre-authorized email are created active and get a token
+      // back → log them straight in. Other roles are `pending` (no token) and must
+      // be approved before logging in.
+      const res = await api.post<{ pending?: boolean; token?: string; user?: RawUser }>(
+        "/auth/register", input,
+      );
+      if (res.token && res.user) {
+        setToken(res.token);
+        setUser(normalizeUser(res.user));
+        return { success: true, pending: false };
+      }
       return { success: true, pending: true };
     } catch (e) {
       return { success: false, error: (e as Error).message };

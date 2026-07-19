@@ -15,6 +15,10 @@ export type RestaurantInput = {
   timezone?: string;
   basePayPerShift?: number | null;
   bonusPayPerShift?: number | null;
+  basePayLunch?: number | null;
+  bonusPayLunch?: number | null;
+  basePayDinner?: number | null;
+  bonusPayDinner?: number | null;
   lateDiscountAmount?: number | null;
   noShowDiscountMode?: NoShowDiscountMode | null;
   noShowCustomAmount?: number | null;

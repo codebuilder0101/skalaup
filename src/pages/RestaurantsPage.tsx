@@ -38,9 +38,11 @@ type FormState = {
   // shift times (HH:MM) — each meal period can hold multiple staggered slots
   lunchSlots: SlotRow[];
   dinnerSlots: SlotRow[];
-  // pay — empty string = inherit the global default (stored as NULL)
-  basePayPerShift: string;
-  bonusPayPerShift: string;
+  // pay per shift type — empty string = inherit the global default (stored as NULL)
+  lunchBasePay: string;
+  lunchBonusPay: string;
+  dinnerBasePay: string;
+  dinnerBonusPay: string;
   // discounts / bonus
   lateDiscountAmount: string;
   noShowDiscountMode: string; // "" = inherit
@@ -52,7 +54,7 @@ const emptyForm: FormState = {
   name: "", address: "", cep: "", cnpj: "", latitude: "", longitude: "", active: true,
   lunchSlots: [],
   dinnerSlots: [],
-  basePayPerShift: "", bonusPayPerShift: "",
+  lunchBasePay: "", lunchBonusPay: "", dinnerBasePay: "", dinnerBonusPay: "",
   lateDiscountAmount: "", noShowDiscountMode: "", noShowCustomAmount: "",
   weekendBonus: "inherit",
 };
@@ -137,8 +139,10 @@ export default function RestaurantsPage() {
       active: r.active,
       lunchSlots: toSlots("lunch"),
       dinnerSlots: toSlots("dinner"),
-      basePayPerShift: toStr(r.basePayPerShift),
-      bonusPayPerShift: toStr(r.bonusPayPerShift),
+      lunchBasePay: toStr(r.basePayLunch),
+      lunchBonusPay: toStr(r.bonusPayLunch),
+      dinnerBasePay: toStr(r.basePayDinner),
+      dinnerBonusPay: toStr(r.bonusPayDinner),
       lateDiscountAmount: toStr(r.lateDiscountAmount),
       noShowDiscountMode: r.noShowDiscountMode ?? "",
       noShowCustomAmount: toStr(r.noShowCustomAmount),
@@ -167,7 +171,10 @@ export default function RestaurantsPage() {
     }
 
     // Amounts ≥ 0
-    const amounts = [form.basePayPerShift, form.bonusPayPerShift, form.lateDiscountAmount, form.noShowCustomAmount];
+    const amounts = [
+      form.lunchBasePay, form.lunchBonusPay, form.dinnerBasePay, form.dinnerBonusPay,
+      form.lateDiscountAmount, form.noShowCustomAmount,
+    ];
     for (const a of amounts) {
       if (a.trim() === "") continue;
       const n = Number(a);
@@ -204,8 +211,10 @@ export default function RestaurantsPage() {
       latitude: toNum(form.latitude),
       longitude: toNum(form.longitude),
       active: form.active,
-      basePayPerShift: toNum(form.basePayPerShift),
-      bonusPayPerShift: toNum(form.bonusPayPerShift),
+      basePayLunch: toNum(form.lunchBasePay),
+      bonusPayLunch: toNum(form.lunchBonusPay),
+      basePayDinner: toNum(form.dinnerBasePay),
+      bonusPayDinner: toNum(form.dinnerBonusPay),
       lateDiscountAmount: toNum(form.lateDiscountAmount),
       noShowDiscountMode: (form.noShowDiscountMode || null) as NoShowDiscountMode | null,
       noShowCustomAmount: toNum(form.noShowCustomAmount),
@@ -357,9 +366,9 @@ export default function RestaurantsPage() {
             <div className="space-y-4 pt-3 border-t">
               <h4 className="text-sm font-semibold text-foreground">{t("skala.restaurants.sectionShifts")}</h4>
               {([
-                { key: "lunchSlots" as const, label: t("skala.restaurants.shiftLunch"), add: t("skala.restaurants.addLunchTime") },
-                { key: "dinnerSlots" as const, label: t("skala.restaurants.shiftDinner"), add: t("skala.restaurants.addDinnerTime") },
-              ]).map(({ key, label, add }) => {
+                { key: "lunchSlots" as const, label: t("skala.restaurants.shiftLunch"), add: t("skala.restaurants.addLunchTime"), baseKey: "lunchBasePay" as const, bonusKey: "lunchBonusPay" as const },
+                { key: "dinnerSlots" as const, label: t("skala.restaurants.shiftDinner"), add: t("skala.restaurants.addDinnerTime"), baseKey: "dinnerBasePay" as const, bonusKey: "dinnerBonusPay" as const },
+              ]).map(({ key, label, add, baseKey, bonusKey }) => {
                 const list = form[key];
                 const update = (idx: number, patch: Partial<SlotRow>) =>
                   setForm({ ...form, [key]: list.map((s, i) => (i === idx ? { ...s, ...patch } : s)) });
@@ -403,34 +412,29 @@ export default function RestaurantsPage() {
                     <Button type="button" size="sm" variant="outline" onClick={addRow}>
                       <Plus className="w-3.5 h-3.5 mr-1" />{add}
                     </Button>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">{t("skala.restaurants.basePay")}</Label>
+                        <Input
+                          type="number" min="0" step="0.01" inputMode="decimal"
+                          placeholder={t("skala.restaurants.inheritGlobal")}
+                          value={form[baseKey]}
+                          onChange={(e) => setForm({ ...form, [baseKey]: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">{t("skala.restaurants.bonusPay")}</Label>
+                        <Input
+                          type="number" min="0" step="0.01" inputMode="decimal"
+                          placeholder={t("skala.restaurants.inheritGlobal")}
+                          value={form[bonusKey]}
+                          onChange={(e) => setForm({ ...form, [bonusKey]: e.target.value })}
+                        />
+                      </div>
+                    </div>
                   </div>
                 );
               })}
-            </div>
-
-            {/* --- Pay --- */}
-            <div className="space-y-3 pt-3 border-t">
-              <h4 className="text-sm font-semibold text-foreground">{t("skala.restaurants.sectionPay")}</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>{t("skala.restaurants.basePay")}</Label>
-                  <Input
-                    type="number" min="0" step="0.01" inputMode="decimal"
-                    placeholder={t("skala.restaurants.inheritGlobal")}
-                    value={form.basePayPerShift}
-                    onChange={(e) => setForm({ ...form, basePayPerShift: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("skala.restaurants.bonusPay")}</Label>
-                  <Input
-                    type="number" min="0" step="0.01" inputMode="decimal"
-                    placeholder={t("skala.restaurants.inheritGlobal")}
-                    value={form.bonusPayPerShift}
-                    onChange={(e) => setForm({ ...form, bonusPayPerShift: e.target.value })}
-                  />
-                </div>
-              </div>
             </div>
 
             {/* --- Discounts & bonus --- */}

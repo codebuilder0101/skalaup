@@ -119,6 +119,10 @@ export interface RestaurantRow {
   timezone: string;
   base_pay_per_shift: number | null;
   bonus_pay_per_shift: number | null;
+  base_pay_lunch: number | null;
+  bonus_pay_lunch: number | null;
+  base_pay_dinner: number | null;
+  bonus_pay_dinner: number | null;
   late_discount_amount: number | null;
   no_show_discount_mode: string | null;
   no_show_custom_amount: number | null;
@@ -141,6 +145,11 @@ export interface Restaurant {
   // numeric columns arrive from pg as strings (e.g. "60.00") or null when inheriting the global default
   basePayPerShift: string | number | null;
   bonusPayPerShift: string | number | null;
+  // per-shift-type overrides (null = inherit the general value, then global)
+  basePayLunch: string | number | null;
+  bonusPayLunch: string | number | null;
+  basePayDinner: string | number | null;
+  bonusPayDinner: string | number | null;
   lateDiscountAmount: string | number | null;
   noShowDiscountMode: NoShowDiscountMode | null;
   noShowCustomAmount: string | number | null;

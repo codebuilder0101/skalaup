@@ -43,12 +43,12 @@ function nextMonth(monthRef) {
   return d.toISOString().slice(0, 10);
 }
 
-// Per-restaurant pay settings, cached for the duration of one generation run.
+// Per-restaurant, per-shift-type pay settings, cached for one generation run.
 async function settingsResolver() {
   const cache = new Map();
-  return async (restaurantId) => {
-    const key = restaurantId ?? "__global__";
-    if (!cache.has(key)) cache.set(key, await resolvePaySettings(restaurantId));
+  return async (restaurantId, shiftType) => {
+    const key = `${restaurantId ?? "__global__"}|${shiftType ?? "__any__"}`;
+    if (!cache.has(key)) cache.set(key, await resolvePaySettings(restaurantId, shiftType));
     return cache.get(key);
   };
 }
@@ -123,7 +123,7 @@ export async function generateMonthPay(monthRefRaw) {
       const worked = !r.noShow && !r.absenceType;
       if (!inMonth || !worked) continue;
 
-      const s = await resolve(r.restaurantId);
+      const s = await resolve(r.restaurantId, r.shiftType);
       const eligible = s.bonusEnabled && isEligible(r.userId, r.date);
       const appliedRate = round2(eligible ? s.bonusPay : s.basePay);
 

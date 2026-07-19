@@ -10,6 +10,8 @@ const requireOps = requireRole("coordinator", "administrator");
 const SCALAR_COLS = `id, name, address, cep, cnpj, latitude, longitude,
   geofence_radius_m as "geofenceRadiusM", timezone,
   base_pay_per_shift as "basePayPerShift", bonus_pay_per_shift as "bonusPayPerShift",
+  base_pay_lunch as "basePayLunch", bonus_pay_lunch as "bonusPayLunch",
+  base_pay_dinner as "basePayDinner", bonus_pay_dinner as "bonusPayDinner",
   late_discount_amount as "lateDiscountAmount", no_show_discount_mode as "noShowDiscountMode",
   no_show_custom_amount as "noShowCustomAmount", weekend_bonus_enabled as "weekendBonusEnabled",
   active, created_at as "createdAt", updated_at as "updatedAt"`;
@@ -17,7 +19,8 @@ const SCALAR_COLS = `id, name, address, cep, cnpj, latitude, longitude,
 const SHIFT_TYPES = ["lunch", "dinner"];
 const NO_SHOW_MODES = ["highest_shift", "base_shift", "custom"];
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/; // HH:MM, 24h
-const NUM_KEYS = ["basePayPerShift", "bonusPayPerShift", "lateDiscountAmount", "noShowCustomAmount"];
+const NUM_KEYS = ["basePayPerShift", "bonusPayPerShift", "lateDiscountAmount", "noShowCustomAmount",
+  "basePayLunch", "bonusPayLunch", "basePayDinner", "bonusPayDinner"];
 
 // Load shift templates for a set of restaurants, grouped by restaurant id.
 // `q` is a pg client or the pool (both expose .query).
@@ -146,8 +149,9 @@ router.post("/", requireOps, async (req, res) => {
       `insert into public.restaurants
         (name, address, cep, cnpj, latitude, longitude, geofence_radius_m, timezone,
          base_pay_per_shift, bonus_pay_per_shift, late_discount_amount, no_show_discount_mode,
-         no_show_custom_amount, weekend_bonus_enabled, active)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning ${SCALAR_COLS}`,
+         no_show_custom_amount, weekend_bonus_enabled, active,
+         base_pay_lunch, bonus_pay_lunch, base_pay_dinner, bonus_pay_dinner)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning ${SCALAR_COLS}`,
       [
         b.name, b.address ?? null, b.cep ?? null, b.cnpj ?? null,
         b.latitude ?? null, b.longitude ?? null,
@@ -155,6 +159,8 @@ router.post("/", requireOps, async (req, res) => {
         b.basePayPerShift ?? null, b.bonusPayPerShift ?? null,
         b.lateDiscountAmount ?? null, b.noShowDiscountMode ?? null,
         b.noShowCustomAmount ?? null, b.weekendBonusEnabled ?? null, b.active ?? true,
+        b.basePayLunch ?? null, b.bonusPayLunch ?? null,
+        b.basePayDinner ?? null, b.bonusPayDinner ?? null,
       ],
     );
     const row = rows[0];
@@ -180,6 +186,8 @@ router.put("/:id", requireOps, async (req, res) => {
     latitude: "latitude", longitude: "longitude",
     geofenceRadiusM: "geofence_radius_m", timezone: "timezone",
     basePayPerShift: "base_pay_per_shift", bonusPayPerShift: "bonus_pay_per_shift",
+    basePayLunch: "base_pay_lunch", bonusPayLunch: "bonus_pay_lunch",
+    basePayDinner: "base_pay_dinner", bonusPayDinner: "bonus_pay_dinner",
     lateDiscountAmount: "late_discount_amount", noShowDiscountMode: "no_show_discount_mode",
     noShowCustomAmount: "no_show_custom_amount", weekendBonusEnabled: "weekend_bonus_enabled",
     active: "active",

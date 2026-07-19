@@ -25,8 +25,11 @@ export async function ensurePayrollPeriod(monthRef) {
   );
 }
 
-// Resolve effective pay/discount settings for a restaurant (global fallback).
-export async function resolvePaySettings(restaurantId) {
+// Resolve effective pay/discount settings for a restaurant, optionally for a
+// specific shift type. Pay cascades: per-shift-type restaurant value → the
+// restaurant's general value → the global default. `shiftType` is optional; when
+// omitted the per-type override is skipped (used by month-level discounts).
+export async function resolvePaySettings(restaurantId, shiftType) {
   const g = await one(
     `select base_pay_per_shift as "basePay", bonus_pay_per_shift as "bonusPay",
             late_discount_amount as "lateDiscount", no_show_discount_mode as "noShowMode",
@@ -37,15 +40,19 @@ export async function resolvePaySettings(restaurantId) {
   if (restaurantId) {
     r = await one(
       `select base_pay_per_shift as "basePay", bonus_pay_per_shift as "bonusPay",
+              base_pay_lunch as "baseLunch", bonus_pay_lunch as "bonusLunch",
+              base_pay_dinner as "baseDinner", bonus_pay_dinner as "bonusDinner",
               late_discount_amount as "lateDiscount", no_show_discount_mode as "noShowMode",
               no_show_custom_amount as "noShowCustom", weekend_bonus_enabled as "bonusEnabled"
          from public.restaurants where id = $1`,
       [restaurantId],
     );
   }
+  const typeBase = shiftType === "lunch" ? r?.baseLunch : shiftType === "dinner" ? r?.baseDinner : null;
+  const typeBonus = shiftType === "lunch" ? r?.bonusLunch : shiftType === "dinner" ? r?.bonusDinner : null;
   return {
-    basePay: num(r?.basePay) ?? num(g?.basePay) ?? 60,
-    bonusPay: num(r?.bonusPay) ?? num(g?.bonusPay) ?? 75,
+    basePay: num(typeBase) ?? num(r?.basePay) ?? num(g?.basePay) ?? 60,
+    bonusPay: num(typeBonus) ?? num(r?.bonusPay) ?? num(g?.bonusPay) ?? 75,
     // Late discount is GLOBAL only (R20 F5): the 3rd-late penalty is the same for
     // every client, configured in Settings → Pontuação. Per-restaurant values are ignored.
     lateDiscount: num(g?.lateDiscount) ?? 0,

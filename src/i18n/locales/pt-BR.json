@@ -2004,7 +2004,14 @@
       "levelName": "Brincador {{level}} Estrela(s)",
       "noLevel": "Sem nível ainda — faixas de corte definidas em breve.",
       "history": "Histórico de pontuação",
-      "empty": "Nenhum evento de pontuação ainda."
+      "empty": "Nenhum evento de pontuação ainda.",
+      "qr": {
+        "title": "Seu QR de avaliação",
+        "hint": "Mostre este QR para o cliente avaliar o seu atendimento. Você pode baixar ou imprimir.",
+        "download": "Baixar",
+        "print": "Imprimir",
+        "printCaption": "Aponte a câmera para avaliar o atendimento"
+      }
     },
     "score": {
       "events": {

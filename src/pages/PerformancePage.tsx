@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Star, Loader2, TrendingUp, TrendingDown } from "lucide-react";
+import { Star, Loader2, TrendingUp, TrendingDown, QrCode, Download, Printer } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { getFreelancer } from "@/lib/skalaup/freelancers";
 import { listScoreEvents } from "@/lib/skalaup/score";
@@ -19,7 +21,9 @@ export default function PerformancePage() {
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState<number | null>(null);
   const [events, setEvents] = useState<ScoreEvent[]>([]);
+  const [ratingToken, setRatingToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const qrBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void (async () => {
@@ -32,11 +36,44 @@ export default function PerformancePage() {
       if (error) toast.error(error.message);
       setScore(Number(me?.profile?.currentScore ?? 0));
       setLevel(me?.profile?.currentLevel ?? null);
+      setRatingToken(me?.profile?.publicRatingToken ?? null);
       // pg returns numeric columns as strings (e.g. "-8.00") — coerce to real numbers.
       setEvents(evs.filter((e) => !e.isVoided).map((e) => ({ ...e, points: Number(e.points) })));
       setLoading(false);
     })();
   }, [user]);
+
+  // The freelancer's own customer-rating QR (client 2026-07-19): they can show or
+  // print it so a customer can rate their service. Same /rate/:token page the admin uses.
+  const ratingUrl = ratingToken ? `${window.location.origin}/rate/${ratingToken}` : "";
+
+  const downloadQr = () => {
+    const canvas = qrBoxRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `qr-${user?.name ?? "avaliacao"}.png`;
+    a.click();
+  };
+
+  const printQr = () => {
+    const canvas = qrBoxRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    const w = window.open("", "_blank", "width=420,height=560");
+    if (!w) return;
+    w.document.write(
+      `<html><head><title>QR ${user?.name ?? ""}</title></head>` +
+      `<body style="text-align:center;font-family:sans-serif;padding:24px">` +
+      `<h2 style="margin:0 0 4px">${user?.name ?? ""}</h2>` +
+      `<p style="color:#666;margin:0 0 16px">${t("skala.performance.qr.printCaption")}</p>` +
+      `<img src="${dataUrl}" style="width:280px;height:280px"/>` +
+      `</body></html>`,
+    );
+    w.document.close();
+    w.focus();
+    w.print();
+  };
 
   const eventLabel = (type: ScoreEventType) => t(`skala.score.events.${type}`);
   const fmtDate = (d: string) =>
@@ -101,6 +138,29 @@ export default function PerformancePage() {
                 </div>
               </div>
             </Card>
+
+            {/* Own customer-rating QR (client 2026-07-19) — freelancer shows/prints it. */}
+            {ratingUrl && (
+              <Card className="p-5">
+                <h2 className="font-semibold text-foreground mb-1 flex items-center gap-2">
+                  <QrCode className="w-4 h-4" /> {t("skala.performance.qr.title")}
+                </h2>
+                <p className="text-sm text-muted-foreground mb-4">{t("skala.performance.qr.hint")}</p>
+                <div ref={qrBoxRef} className="flex flex-col items-center gap-3">
+                  <div className="rounded-xl bg-white p-3">
+                    <QRCodeCanvas value={ratingUrl} size={200} includeMargin level="M" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={downloadQr}>
+                      <Download className="w-4 h-4 mr-1.5" />{t("skala.performance.qr.download")}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={printQr}>
+                      <Printer className="w-4 h-4 mr-1.5" />{t("skala.performance.qr.print")}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* Event history (spec §9.1) */}
             <Card className="p-5">

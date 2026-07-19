@@ -2004,7 +2004,14 @@
       "levelName": "Brincador {{level}}-Star",
       "noLevel": "No level yet — score cutoffs defined soon.",
       "history": "Score history",
-      "empty": "No score events yet."
+      "empty": "No score events yet.",
+      "qr": {
+        "title": "Your rating QR",
+        "hint": "Show this QR so a customer can rate your service. You can download or print it.",
+        "download": "Download",
+        "print": "Print",
+        "printCaption": "Point the camera to rate the service"
+      }
     },
     "score": {
       "events": {

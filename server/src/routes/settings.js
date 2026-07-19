@@ -24,6 +24,7 @@ async function readConfig() {
     `select flexible_availability_points as fa, weekend_target_points as wt,
             furo_cover_points as fc, monthly_target_shifts as mts, swap_scoring_cap as cap,
             manual_score_monthly_cap as mscap, late_discount_amount as ldc,
+            base_pay_per_shift as bp, bonus_pay_per_shift as bnp, weekend_bonus_enabled as wbe,
             star_cutoffs as cutoffs, custom_score_criteria as criteria
        from public.app_settings where id = 1`,
   );
@@ -45,6 +46,10 @@ async function readConfig() {
     manualScoreMonthlyCap: Number(s?.mscap ?? 10),
     // Global 3rd-late discount (R20 F5): same for all clients, edited here only.
     lateDiscountAmount: Number(s?.ldc ?? 0),
+    // Global pay defaults — the fallback a restaurant uses when its own field is blank.
+    basePayPerShift: Number(s?.bp ?? 60),
+    bonusPayPerShift: Number(s?.bnp ?? 75),
+    weekendBonusEnabled: (s?.wbe ?? true) !== false,
     customCriteria,
   };
 }
@@ -115,6 +120,9 @@ router.put("/score", requireOps, async (req, res) => {
     if (isNum(b.swapScoringCap)) colUpdates.swap_scoring_cap = Math.max(0, Math.round(Number(b.swapScoringCap)));
     if (isNum(b.manualScoreMonthlyCap)) colUpdates.manual_score_monthly_cap = Math.max(0, Number(b.manualScoreMonthlyCap));
     if (isNum(b.lateDiscountAmount)) colUpdates.late_discount_amount = Math.max(0, Number(b.lateDiscountAmount));
+    if (isNum(b.basePayPerShift)) colUpdates.base_pay_per_shift = Math.max(0, Number(b.basePayPerShift));
+    if (isNum(b.bonusPayPerShift)) colUpdates.bonus_pay_per_shift = Math.max(0, Number(b.bonusPayPerShift));
+    if (typeof b.weekendBonusEnabled === "boolean") colUpdates.weekend_bonus_enabled = b.weekendBonusEnabled;
 
     // Merge jsonb overrides on top of what's stored.
     const existing = (await one(`select score_points from public.app_settings where id = 1`))?.score_points || {};

@@ -1417,6 +1417,14 @@
           "swap_requested": "Solicitou troca",
           "swap_accepted": "Aceitou troca"
         }
+      },
+      "pay": {
+        "title": "Valores padrão",
+        "subtitle": "Valores usados quando um restaurante não define os próprios. Cada restaurante pode ter valores próprios ou seguir estes.",
+        "basePay": "Valor base por turno (R$)",
+        "bonusPay": "Valor com bônus por turno (R$)",
+        "weekendBonus": "Bonificação de fim de semana",
+        "weekendBonusHint": "Quando ativa, quem cumpre os turnos obrigatórios do fim de semana recebe todos os turnos daquela semana no valor com bônus."
       }
     },
     "common": {

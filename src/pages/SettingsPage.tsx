@@ -211,6 +211,30 @@ function ScoreConfigCard() {
         </div>
       </div>
 
+      {/* Global pay defaults — base/bonus per shift + weekend bonus. Restaurants
+          that leave their own field blank inherit these. */}
+      <div>
+        <Label className="text-sm font-medium">{t("skala.settings.pay.title")}</Label>
+        <p className="text-xs text-muted-foreground mb-2">{t("skala.settings.pay.subtitle")}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-foreground">{t("skala.settings.pay.basePay")}</span>
+            <Input type="number" min={0} step="0.01" className="w-24" value={cfg.basePayPerShift}
+              onChange={(e) => setCfg((c) => (c ? { ...c, basePayPerShift: Number(e.target.value) || 0 } : c))} />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-foreground">{t("skala.settings.pay.bonusPay")}</span>
+            <Input type="number" min={0} step="0.01" className="w-24" value={cfg.bonusPayPerShift}
+              onChange={(e) => setCfg((c) => (c ? { ...c, bonusPayPerShift: Number(e.target.value) || 0 } : c))} />
+          </div>
+          <div className="flex items-center justify-between gap-3 sm:col-span-2">
+            <span className="text-sm text-foreground" title={t("skala.settings.pay.weekendBonusHint")}>{t("skala.settings.pay.weekendBonus")}</span>
+            <Switch checked={cfg.weekendBonusEnabled}
+              onCheckedChange={(v) => setCfg((c) => (c ? { ...c, weekendBonusEnabled: v } : c))} />
+          </div>
+        </div>
+      </div>
+
       {/* Custom criteria (R15) — freely-defined manual scoring rules. */}
       <div className="border-t pt-5">
         <div className="flex items-center justify-between gap-3">

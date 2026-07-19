@@ -18,6 +18,10 @@ export interface ScoreSettings {
   swapScoringCap: number;
   manualScoreMonthlyCap: number;
   lateDiscountAmount: number;
+  // Global pay defaults (inherited by any restaurant that leaves its own blank).
+  basePayPerShift: number;
+  bonusPayPerShift: number;
+  weekendBonusEnabled: boolean;
   customCriteria: CustomCriterion[];
 }
 

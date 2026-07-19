@@ -1417,6 +1417,14 @@
           "swap_requested": "Requested a swap",
           "swap_accepted": "Accepted a swap"
         }
+      },
+      "pay": {
+        "title": "Default values",
+        "subtitle": "Values used when a restaurant does not set its own. Each restaurant can override these or follow them.",
+        "basePay": "Base pay per shift (R$)",
+        "bonusPay": "Bonus pay per shift (R$)",
+        "weekendBonus": "Weekend bonus",
+        "weekendBonusHint": "When active, whoever completes the mandatory weekend shifts is paid the bonus rate for every shift that week."
       }
     },
     "common": {

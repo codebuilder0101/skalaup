@@ -218,12 +218,27 @@ router.put("/:id", requireOps, async (req, res) => {
   }
 });
 
+// Hard-delete a restaurant. Every table that references restaurants cascades or
+// nulls on delete EXCEPT schedule_assignments, whose FK is `on delete restrict`
+// (schema §schedule_assignments) — that guard is what blocks a plain delete. We
+// remove those assignments first inside a transaction; their own children
+// (shift_attendance, absences, swaps) cascade, and payroll_entries keep their
+// history with restaurant_id set to null. Then the restaurant delete succeeds and
+// the remaining cascade FKs clean up the rest.
 router.delete("/:id", requireOps, async (req, res) => {
+  const client = await pool.connect();
   try {
-    await pool.query(`delete from public.restaurants where id = $1`, [req.params.id]);
+    await client.query("begin");
+    await client.query(`delete from public.schedule_assignments where restaurant_id = $1`, [req.params.id]);
+    const { rowCount } = await client.query(`delete from public.restaurants where id = $1`, [req.params.id]);
+    await client.query("commit");
+    if (rowCount === 0) return res.status(404).json({ error: "Not found" });
     res.json({ ok: true });
   } catch (e) {
+    await client.query("rollback");
     res.status(400).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 

@@ -1431,7 +1431,7 @@
         "subtitle": "Exige que o freelancer esteja perto do restaurante para bater o ponto. Use a localização de cada restaurante no cadastro dele.",
         "enabled": "Exigir localização no check-in",
         "radius": "Raio permitido (metros)",
-        "radiusHint": "Distância máxima do restaurante para liberar o check-in. Padrão de 150 metros."
+        "radiusHint": "Distância máxima do restaurante para liberar o check-in. Padrão de 500 metros. Aumente onde o GPS é impreciso, como dentro de shoppings."
       }
     },
     "common": {

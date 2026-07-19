@@ -1431,7 +1431,7 @@
         "subtitle": "Requires the freelancer to be near the restaurant to check in. Set each restaurant's location in its form.",
         "enabled": "Require location on check-in",
         "radius": "Allowed radius (metres)",
-        "radiusHint": "Maximum distance from the restaurant to allow check-in. Default is 150 metres."
+        "radiusHint": "Maximum distance from the restaurant to allow check-in. Default is 500 metres. Increase it where GPS is imprecise, such as inside malls."
       }
     },
     "common": {

@@ -37,7 +37,7 @@ export function evaluateCheckinGeofence({ enabled, radiusM, restLat, restLng, la
     return { ok: false, error: "Ative a localização do celular para fazer o check-in neste restaurante." };
   }
 
-  const radius = Number(radiusM) > 0 ? Number(radiusM) : 150;
+  const radius = Number(radiusM) > 0 ? Number(radiusM) : 500;
   const dist = distanceMeters(Number(restLat), Number(restLng), Number(lat), Number(lng));
   if (dist > radius) {
     return {

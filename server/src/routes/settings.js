@@ -53,7 +53,7 @@ async function readConfig() {
     weekendBonusEnabled: (s?.wbe ?? true) !== false,
     // Geolocation check-in (client round 2026-07-19): global on/off + radius (m).
     checkinGeofenceEnabled: (s?.cge ?? true) !== false,
-    checkinRadiusM: Number(s?.crm ?? 150),
+    checkinRadiusM: Number(s?.crm ?? 500),
     customCriteria,
   };
 }

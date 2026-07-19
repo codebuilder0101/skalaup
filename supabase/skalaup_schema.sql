@@ -139,6 +139,15 @@ create index if not exists idx_restaurants_active on public.restaurants(active);
 alter table public.restaurants add column if not exists no_show_custom_amount numeric(10,2);
 alter table public.restaurants add column if not exists weekend_bonus_enabled boolean;
 
+-- Per-shift-type pay overrides (client 2026-07-19): a restaurant may pay a
+-- different base/bonus per shift type (e.g. full-day 250, Friday dinner 150).
+-- Nullable = inherit the restaurant's general base_pay_per_shift / bonus_pay_per_shift,
+-- then the global app_settings default. Resolution lives in server/src/payroll.js.
+alter table public.restaurants add column if not exists base_pay_lunch   numeric(10,2);
+alter table public.restaurants add column if not exists bonus_pay_lunch  numeric(10,2);
+alter table public.restaurants add column if not exists base_pay_dinner  numeric(10,2);
+alter table public.restaurants add column if not exists bonus_pay_dinner numeric(10,2);
+
 drop trigger if exists trg_restaurants_updated_at on public.restaurants;
 create trigger trg_restaurants_updated_at before update on public.restaurants
   for each row execute function public.set_updated_at();
@@ -894,7 +903,11 @@ alter table public.app_settings add column if not exists weekend_target_points n
 -- restaurant) and blocks a self check-in outside the radius. Restaurants without
 -- coordinates are not geofenced (can't measure distance), so they fall back to manual.
 alter table public.app_settings add column if not exists checkin_geofence_enabled boolean not null default true;
-alter table public.app_settings add column if not exists checkin_radius_m integer not null default 150;
+alter table public.app_settings add column if not exists checkin_radius_m integer not null default 500;
+-- Default radius bumped 150 -> 500m (client 2026-07-19): indoor/mall GPS is imprecise,
+-- so a wider perimeter avoids false blocks. Still per-install configurable in Settings.
+-- This only sets the column default; it never overrides a value an admin already set.
+alter table public.app_settings alter column checkin_radius_m set default 500;
 
 -- E3 — an extra shift opened as a vaga links back to its request, so that when a
 -- freelancer actually claims the vaga we can confirm to the requesting manager.

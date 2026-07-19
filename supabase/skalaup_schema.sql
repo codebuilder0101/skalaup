@@ -819,7 +819,12 @@ alter table public.score_events add constraint score_events_event_type_check che
   'charity_event','inperson_training','feedback_fundamentos','feedback_proatividade',
   'feedback_encantamento','feedback_extraordinario','late_light','late_moderate',
   'late_severe','late_critical','swap_requested','no_show_unjustified','manual_adjustment',
-  'flexible_availability','furo_covered'));
+  'flexible_availability','furo_covered','customer_rating'));
+
+-- customer_rating score events reference a validated public_ratings row.
+alter table public.score_events drop constraint if exists score_events_reference_type_check;
+alter table public.score_events add constraint score_events_reference_type_check
+  check (reference_type in ('assignment','feedback','swap','engagement','absence','manual','public_rating'));
 
 -- =============================================================================
 -- CLIENT REQUIREMENTS — ROUND 2 (2026-07). All idempotent, safe to re-run.
@@ -923,6 +928,23 @@ create table if not exists public.authorized_freelancer_emails (
   claimed_at  timestamptz
 );
 
+-- Customer QR ratings now require coordination validation before they score (client
+-- 2026-07-19). A new rating lands 'pending' and notifies coordination; a coordinator
+-- approves and picks a rating TYPE (configurable in app_settings.rating_types) whose
+-- points — which MAY be negative for a bad review — are then awarded via a
+-- 'customer_rating' score_event (linked here so a later reject can void it).
+alter table public.public_ratings add column if not exists status text not null default 'pending'
+  check (status in ('pending','approved','rejected'));
+alter table public.public_ratings add column if not exists rating_type_id text;
+alter table public.public_ratings add column if not exists reviewed_by uuid references public.users(id) on delete set null;
+alter table public.public_ratings add column if not exists reviewed_at timestamptz;
+alter table public.public_ratings add column if not exists score_event_id uuid references public.score_events(id) on delete set null;
+create index if not exists idx_public_ratings_status on public.public_ratings(status, created_at desc);
+
+-- Coordinator-defined customer-rating types: [{ id, label, points, active }].
+-- points may be negative (bad review subtracts). Editable in Settings.
+alter table public.app_settings add column if not exists rating_types jsonb not null default '[]'::jsonb;
+
 -- E3 — an extra shift opened as a vaga links back to its request, so that when a
 -- freelancer actually claims the vaga we can confirm to the requesting manager.
 alter table public.demand_overrides
@@ -961,7 +983,7 @@ alter table public.notifications add constraint notifications_type_check check (
   'weekday_eligibility','manager_checkin_checkout','feedback_received',
   'feedback_request','schedule_published','schedule_assigned','schedule_removed',
   'shift_reminder','waitlist_opening','birthday','inactivity_warning','profile_inactivated',
-  'extra_shift_invite'));
+  'extra_shift_invite','customer_rating'));
 
 -- =============================================================================
 -- ROW LEVEL SECURITY

@@ -26,7 +26,7 @@ async function readConfig() {
             manual_score_monthly_cap as mscap, late_discount_amount as ldc,
             base_pay_per_shift as bp, bonus_pay_per_shift as bnp, weekend_bonus_enabled as wbe,
             checkin_geofence_enabled as cge, checkin_radius_m as crm,
-            star_cutoffs as cutoffs, custom_score_criteria as criteria
+            star_cutoffs as cutoffs, custom_score_criteria as criteria, rating_types as "ratingTypes"
        from public.app_settings where id = 1`,
   );
   const points = await getScorePoints(); // defaults + jsonb overrides (non-column keys)
@@ -39,7 +39,12 @@ async function readConfig() {
   const customCriteria = (Array.isArray(s?.criteria) ? s.criteria : [])
     .filter((c) => c && typeof c.id === "string" && typeof c.label === "string")
     .map((c) => ({ id: c.id, label: c.label, points: Number(c.points) || 0, active: c.active !== false }));
+  // Customer-rating types (client 2026-07-19): points may be negative (bad review).
+  const ratingTypes = (Array.isArray(s?.ratingTypes) ? s.ratingTypes : [])
+    .filter((c) => c && typeof c.id === "string" && typeof c.label === "string")
+    .map((c) => ({ id: c.id, label: c.label, points: Number(c.points) || 0, active: c.active !== false }));
   return {
+    ratingTypes,
     points,
     starCutoffs: cutoffs,
     monthlyTargetShifts: Number(s?.mts ?? 10),
@@ -110,6 +115,25 @@ router.put("/score", requireOps, async (req, res) => {
       }
     }
 
+    // Customer-rating types (client 2026-07-19): [{ id, label, points, active }].
+    // points may be negative (bad review). Same shape/validation as custom criteria.
+    let ratingTypes = null;
+    if (b.ratingTypes !== undefined) {
+      if (!Array.isArray(b.ratingTypes)) {
+        return res.status(400).json({ error: "ratingTypes must be an array." });
+      }
+      const seen = new Set();
+      ratingTypes = [];
+      for (const c of b.ratingTypes) {
+        if (!c || typeof c !== "object") continue;
+        const label = String(c.label ?? "").trim();
+        const id = String(c.id ?? "").trim();
+        if (!id || !label || seen.has(id) || !isNum(c.points)) continue;
+        seen.add(id);
+        ratingTypes.push({ id, label, points: Number(c.points), active: c.active !== false });
+      }
+    }
+
     // Split incoming point edits into column-backed vs jsonb-backed.
     const colUpdates = {}; // app_settings column -> value
     const jsonUpdates = {}; // event_type -> value (for score_points jsonb)
@@ -139,6 +163,7 @@ router.put("/score", requireOps, async (req, res) => {
     const vals = [JSON.stringify(mergedJson)];
     if (cutoffs) { vals.push(JSON.stringify(cutoffs)); sets.push(`star_cutoffs = $${vals.length}::jsonb`); }
     if (criteria) { vals.push(JSON.stringify(criteria)); sets.push(`custom_score_criteria = $${vals.length}::jsonb`); }
+    if (ratingTypes) { vals.push(JSON.stringify(ratingTypes)); sets.push(`rating_types = $${vals.length}::jsonb`); }
     for (const [col, v] of Object.entries(colUpdates)) { vals.push(v); sets.push(`${col} = $${vals.length}`); }
     await pool.query(`update public.app_settings set ${sets.join(", ")} where id = 1`, vals);
 

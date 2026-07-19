@@ -19,6 +19,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   MessageSquare,
+  MessageSquareQuote,
   DollarSign,
   ShieldCheck,
   ShieldAlert,
@@ -57,6 +58,7 @@ const navGroupsConfig: NavGroup[] = [
       { icon: ShieldAlert, labelKey: "nav.attendance", path: "/attendance", roles: COORD },
       { icon: ArrowLeftRight, labelKey: "nav.swaps", path: "/swaps", roles: [...COORD, ...FREELANCER] },
       { icon: MessageSquare, labelKey: "nav.feedback", path: "/feedback", roles: [...COORD, ...MANAGER] },
+      { icon: MessageSquareQuote, labelKey: "nav.ratings", path: "/ratings", roles: COORD },
     ],
   },
   {

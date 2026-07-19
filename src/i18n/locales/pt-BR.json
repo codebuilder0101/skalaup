@@ -57,6 +57,7 @@
     "swaps": "Trocas de Turno",
     "extraShifts": "Turno Extra",
     "feedback": "Feedback",
+    "ratings": "Avaliações",
     "performance": "Desempenho",
     "financial": "Financeiro",
     "notifications": "Notificações",
@@ -1432,6 +1433,31 @@
         "enabled": "Exigir localização no check-in",
         "radius": "Raio permitido (metros)",
         "radiusHint": "Distância máxima do restaurante para liberar o check-in. Padrão de 500 metros. Aumente onde o GPS é impreciso, como dentro de shoppings."
+      },
+      "ratingTypes": {
+        "title": "Tipos de avaliação do cliente",
+        "hint": "Defina os tipos que a coordenação escolhe ao validar uma avaliação. Os pontos podem ser negativos para uma avaliação ruim.",
+        "add": "Adicionar tipo",
+        "empty": "Nenhum tipo ainda.",
+        "labelPlaceholder": "Nome do tipo (ex.: Atendimento excelente)",
+        "pointsLabel": "Pontos"
+      }
+    },
+    "ratings": {
+      "title": "Avaliações de clientes",
+      "subtitle": "Valide as avaliações recebidas pelo QR. Elas só pontuam depois que você aprovar e escolher o tipo.",
+      "empty": "Nenhuma avaliação aqui.",
+      "noTypes": "Cadastre os tipos de avaliação em Configurações antes de aprovar.",
+      "pickType": "Escolha o tipo da avaliação.",
+      "pickTypePlaceholder": "Tipo da avaliação",
+      "approve": "Aprovar",
+      "reject": "Rejeitar",
+      "approved": "Avaliação aprovada e pontuada.",
+      "rejected": "Avaliação rejeitada.",
+      "status": {
+        "pending": "Pendentes",
+        "approved": "Aprovadas",
+        "rejected": "Rejeitadas"
       }
     },
     "common": {

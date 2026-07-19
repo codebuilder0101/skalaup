@@ -85,6 +85,8 @@ export function notificationLink(n: AppNotification): string | null {
     case "feedback_received":
     case "feedback_request":
       return "/feedback";
+    case "customer_rating":
+      return "/ratings";
     case "swap_request":
       return "/swaps";
     case "manager_checkin_checkout":

@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   SUPPORTED_LANGUAGES, setStoredLanguage, type SupportedLanguage,
 } from "@/i18n/config";
-import { getScoreSettings, saveScoreSettings, type ScoreSettings, type CustomCriterion } from "@/lib/skalaup/settings";
+import { getScoreSettings, saveScoreSettings, type ScoreSettings, type CustomCriterion, type RatingType } from "@/lib/skalaup/settings";
 import { pushSupported, pushPermission, isPushSubscribed, enablePush, disablePush } from "@/lib/skalaup/push";
 
 // Enable/disable web push on this device (R13).
@@ -118,6 +118,14 @@ function ScoreConfigCard() {
   const removeCriterion = (id: string) =>
     setCfg((c) => (c ? { ...c, customCriteria: c.customCriteria.filter((x) => x.id !== id) } : c));
 
+  // Customer-rating types (client 2026-07-19) — same editable shape; points may be negative.
+  const addRatingType = () =>
+    setCfg((c) => (c ? { ...c, ratingTypes: [...c.ratingTypes, { id: newId(), label: "", points: 0, active: true }] } : c));
+  const updateRatingType = (id: string, patch: Partial<RatingType>) =>
+    setCfg((c) => (c ? { ...c, ratingTypes: c.ratingTypes.map((x) => (x.id === id ? { ...x, ...patch } : x)) } : c));
+  const removeRatingType = (id: string) =>
+    setCfg((c) => (c ? { ...c, ratingTypes: c.ratingTypes.filter((x) => x.id !== id) } : c));
+
   const save = async () => {
     if (!cfg) return;
     // Guard: cutoffs must be strictly ascending (server enforces too, but fail fast).
@@ -131,8 +139,11 @@ function ScoreConfigCard() {
     const cleanedCriteria = cfg.customCriteria
       .map((x) => ({ ...x, label: x.label.trim() }))
       .filter((x) => x.label.length > 0);
+    const cleanedRatingTypes = cfg.ratingTypes
+      .map((x) => ({ ...x, label: x.label.trim() }))
+      .filter((x) => x.label.length > 0);
     setSaving(true);
-    const { data, error } = await saveScoreSettings({ ...cfg, customCriteria: cleanedCriteria });
+    const { data, error } = await saveScoreSettings({ ...cfg, customCriteria: cleanedCriteria, ratingTypes: cleanedRatingTypes });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     if (data) setCfg(data);
@@ -291,6 +302,54 @@ function ScoreConfigCard() {
                   type="button" variant="ghost" size="icon" className="text-destructive shrink-0"
                   aria-label={t("skala.common.delete")}
                   onClick={() => removeCriterion(crit.id)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Customer-rating types (client 2026-07-19) — coordinator picks one when
+          validating a QR rating; points may be negative for a bad review. */}
+      <div className="border-t pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label className="text-sm font-medium flex items-center gap-1.5">
+              <Star className="w-3.5 h-3.5" />{t("skala.settings.ratingTypes.title")}
+            </Label>
+            <p className="text-xs text-muted-foreground mt-1">{t("skala.settings.ratingTypes.hint")}</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={addRatingType}>
+            <Plus className="w-3.5 h-3.5 mr-1" />{t("skala.settings.ratingTypes.add")}
+          </Button>
+        </div>
+        {cfg.ratingTypes.length === 0 ? (
+          <p className="text-xs text-muted-foreground mt-3">{t("skala.settings.ratingTypes.empty")}</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {cfg.ratingTypes.map((rt) => (
+              <div key={rt.id} className="flex items-center gap-2">
+                <Input
+                  className="flex-1"
+                  placeholder={t("skala.settings.ratingTypes.labelPlaceholder")}
+                  value={rt.label}
+                  onChange={(e) => updateRatingType(rt.id, { label: e.target.value })}
+                />
+                <Input
+                  type="number" step="0.5" className="w-24"
+                  aria-label={t("skala.settings.ratingTypes.pointsLabel")}
+                  value={rt.points}
+                  onChange={(e) => updateRatingType(rt.id, { points: e.target.value === "" || e.target.value === "-" ? 0 : Number(e.target.value) })}
+                />
+                <div className="flex items-center gap-1.5" title={t("skala.common.active")}>
+                  <Switch checked={rt.active} onCheckedChange={(v) => updateRatingType(rt.id, { active: v })} />
+                </div>
+                <Button
+                  type="button" variant="ghost" size="icon" className="text-destructive shrink-0"
+                  aria-label={t("skala.common.delete")}
+                  onClick={() => removeRatingType(rt.id)}
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>

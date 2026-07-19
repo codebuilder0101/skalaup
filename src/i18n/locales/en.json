@@ -57,6 +57,7 @@
     "swaps": "Shift Swaps",
     "extraShifts": "Extra Shift",
     "feedback": "Feedback",
+    "ratings": "Ratings",
     "performance": "Performance",
     "financial": "Financial",
     "notifications": "Notifications",
@@ -1432,6 +1433,31 @@
         "enabled": "Require location on check-in",
         "radius": "Allowed radius (metres)",
         "radiusHint": "Maximum distance from the restaurant to allow check-in. Default is 500 metres. Increase it where GPS is imprecise, such as inside malls."
+      },
+      "ratingTypes": {
+        "title": "Customer rating types",
+        "hint": "Define the types coordination picks when validating a rating. Points can be negative for a bad review.",
+        "add": "Add type",
+        "empty": "No types yet.",
+        "labelPlaceholder": "Type name (e.g. Excellent service)",
+        "pointsLabel": "Points"
+      }
+    },
+    "ratings": {
+      "title": "Customer ratings",
+      "subtitle": "Validate the QR ratings received. They only score after you approve and pick a type.",
+      "empty": "No ratings here.",
+      "noTypes": "Add rating types in Settings before approving.",
+      "pickType": "Pick the rating type.",
+      "pickTypePlaceholder": "Rating type",
+      "approve": "Approve",
+      "reject": "Reject",
+      "approved": "Rating approved and scored.",
+      "rejected": "Rating rejected.",
+      "status": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected"
       }
     },
     "common": {

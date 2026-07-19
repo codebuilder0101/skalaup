@@ -11,6 +11,7 @@ import RestaurantsPage from "./pages/RestaurantsPage";
 import FreelancersPage from "./pages/FreelancersPage";
 import ProfilePage from "./pages/ProfilePage";
 import ApprovalsPage from "./pages/ApprovalsPage";
+import RatingsPage from "./pages/RatingsPage";
 import SettingsPage from "./pages/SettingsPage";
 import SchedulingPage from "./pages/SchedulingPage";
 import AvailabilityPage from "./pages/AvailabilityPage";
@@ -48,6 +49,7 @@ const App = () => (
             <Route path="/dashboard" element={<ProtectedRoute pathKey="/dashboard"><Index /></ProtectedRoute>} />
             <Route path="/restaurants" element={<ProtectedRoute pathKey="/restaurants"><RestaurantsPage /></ProtectedRoute>} />
             <Route path="/freelancers" element={<ProtectedRoute pathKey="/freelancers"><FreelancersPage /></ProtectedRoute>} />
+            <Route path="/ratings" element={<ProtectedRoute pathKey="/ratings"><RatingsPage /></ProtectedRoute>} />
             <Route path="/approvals" element={<ProtectedRoute pathKey="/approvals"><ApprovalsPage /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute pathKey="/profile"><ProfilePage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute pathKey="/settings"><SettingsPage /></ProtectedRoute>} />

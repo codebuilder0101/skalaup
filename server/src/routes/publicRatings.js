@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { pool, one } from "../db.js";
+import { notifyMany, coordinatorIds } from "../notify.js";
 
 // Public (UNAUTHENTICATED) per-employee rating via QR (R2 item 5). A customer scans
 // the freelancer's QR, lands on /rate/:token and rates 1–5 stars + optional comment.
-// Ratings are INFORMATIONAL ONLY — they never touch the freelancer's score. Anti-spam
-// (client decision): one rating per device per freelancer per day, enforced by the
-// partial unique index idx_public_ratings_daily. This router intentionally does NOT
-// use requireAuth, so it must never expose anything beyond the rating surface.
+// A rating lands 'pending' and does NOT score until a coordinator validates it and
+// picks a type (client 2026-07-19). On submit we notify coordination. Anti-spam:
+// one rating per device per freelancer per day (idempotent unique index). This router
+// intentionally does NOT use requireAuth, so it must never expose anything beyond the
+// rating surface.
 const router = Router();
 
 // Resolve an active freelancer from a public token (or null).
@@ -58,6 +60,18 @@ router.post("/ratings/:token", async (req, res) => {
         return res.status(409).json({ error: "already_rated", message: "Você já avaliou este profissional hoje. Obrigado!" });
       }
       throw e;
+    }
+    // Alert coordination so they can validate it (bell + push). Best-effort.
+    try {
+      const ids = await coordinatorIds();
+      await notifyMany(ids, () => ({
+        type: "customer_rating",
+        title: "Nova avaliação de cliente",
+        body: `${fr.name} recebeu ${stars} estrela(s). Valide para pontuar.`,
+        data: { path: "/ratings" },
+      }));
+    } catch (e) {
+      console.error("rating notify error:", e.message);
     }
     res.status(201).json({ ok: true });
   } catch (e) {

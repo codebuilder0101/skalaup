@@ -22,6 +22,7 @@ import extraShiftRoutes from "./routes/extraShifts.js";
 import settingsRoutes from "./routes/settings.js";
 import pushRoutes from "./routes/push.js";
 import publicRatingRoutes from "./routes/publicRatings.js";
+import ratingRoutes from "./routes/ratings.js";
 import uploadRoutes from "./routes/uploads.js";
 import { UPLOAD_DIR } from "./uploads.js";
 import { startScheduler } from "./scheduler.js";
@@ -68,6 +69,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/push", pushRoutes);
 // Public, unauthenticated: per-employee QR ratings (R2 item 5).
 app.use("/api/public", publicRatingRoutes);
+app.use("/api/ratings", ratingRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

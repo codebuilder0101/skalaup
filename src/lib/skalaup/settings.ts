@@ -10,6 +10,15 @@ export interface CustomCriterion {
   active: boolean;
 }
 
+// Customer-rating type (client 2026-07-19): the coordinator picks one when validating
+// a QR rating; its points (may be negative for a bad review) are then awarded.
+export interface RatingType {
+  id: string;
+  label: string;
+  points: number;
+  active: boolean;
+}
+
 // Editable scoring configuration (R1/R7) — backed by /api/settings/score.
 export interface ScoreSettings {
   points: Record<string, number>;
@@ -26,6 +35,7 @@ export interface ScoreSettings {
   checkinGeofenceEnabled: boolean;
   checkinRadiusM: number;
   customCriteria: CustomCriterion[];
+  ratingTypes: RatingType[];
 }
 
 async function wrap<T>(p: Promise<T>, fallback: T): Promise<Result<T>> {

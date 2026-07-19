@@ -39,7 +39,7 @@ export const roleHomePath: Record<UserRole, string> = {
 // work in the office and aren't scheduled/scored, so they don't get it either.
 const COORDINATOR_PATHS = [
   "/dashboard", "/scheduling", "/restaurants", "/freelancers", "/demand", "/availability",
-  "/attendance", "/swaps", "/extra-shifts", "/feedback", "/financial",
+  "/attendance", "/swaps", "/extra-shifts", "/feedback", "/financial", "/ratings",
   "/notifications", "/settings", "/profile",
 ];
 // Administrator = everything the coordinator can do PLUS user approvals.

@@ -11,6 +11,14 @@ import { notifyMany, coordinatorIds } from "../notify.js";
 // rating surface.
 const router = Router();
 
+// Best-effort client IP (nginx sets X-Forwarded-For; fall back to the socket).
+// Used as the daily-throttle key when the client can't supply a device id, so the
+// per-day unique index always applies (never null → never bypassed).
+function clientIp(req) {
+  const fwd = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return fwd || req.socket?.remoteAddress || "unknown";
+}
+
 // Resolve an active freelancer from a public token (or null).
 async function freelancerByToken(token) {
   if (!token) return null;
@@ -47,7 +55,13 @@ router.post("/ratings/:token", async (req, res) => {
     if (!fr) return res.status(404).json({ error: "not_found", message: "Link de avaliação inválido." });
 
     const comment = b.comment ? String(b.comment).trim().slice(0, 1000) || null : null;
-    const deviceHash = b.deviceHash ? String(b.deviceHash).slice(0, 128) : null;
+    // Daily throttle key: prefer the client device id, but never allow null (the
+    // unique index is partial on `device_hash is not null`, so a null value would
+    // bypass the once-per-day limit). Fall back to the request IP. "no-storage" is
+    // the client sentinel for a device without localStorage — treat it as absent so
+    // those devices throttle by IP instead of colliding on a shared constant.
+    const rawDh = b.deviceHash ? String(b.deviceHash).slice(0, 128) : "";
+    const deviceHash = rawDh && rawDh !== "no-storage" ? rawDh : `ip:${clientIp(req)}`.slice(0, 128);
     try {
       await pool.query(
         `insert into public.public_ratings (freelancer_user_id, stars, comment, device_hash)

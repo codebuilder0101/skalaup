@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Star, Loader2, CheckCircle2, Frown } from "lucide-react";
+import { Star, Loader2, CheckCircle2, Frown, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -23,6 +23,7 @@ export default function PublicRatingPage() {
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [alreadyRated, setAlreadyRated] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -43,7 +44,12 @@ export default function PublicRatingPage() {
       stars, comment: comment.trim() || null, deviceHash: deviceHash(),
     });
     setSubmitting(false);
-    if (error) { setError(error.message); return; }
+    if (error) {
+      // 409 = already rated today → terminal state, not a retryable inline error.
+      if (error.status === 409) { setAlreadyRated(true); return; }
+      setError(error.message);
+      return;
+    }
     setDone(true);
   };
 
@@ -66,6 +72,12 @@ export default function PublicRatingPage() {
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-500" />
             <h1 className="mt-3 text-lg font-semibold text-foreground">{t("skala.publicRating.thanksTitle")}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{t("skala.publicRating.thanksBody")}</p>
+          </div>
+        ) : alreadyRated ? (
+          <div className="py-8 text-center">
+            <BadgeCheck className="mx-auto h-12 w-12 text-primary" />
+            <h1 className="mt-3 text-lg font-semibold text-foreground">{t("skala.publicRating.alreadyRatedTitle")}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{t("skala.publicRating.alreadyRatedBody")}</p>
           </div>
         ) : (
           <>

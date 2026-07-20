@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { Result } from "./types";
 
 // Per-employee public rating via QR (R2 item 5). The /public/* endpoints are
@@ -48,12 +48,13 @@ export const getPublicRatingTarget = (token: string) =>
 
 export async function submitPublicRating(
   token: string, body: { stars: number; comment?: string | null; deviceHash: string },
-): Promise<{ error: { message: string } | null }> {
+): Promise<{ error: { message: string; status?: number } | null }> {
   try {
     await api.post(`/public/ratings/${encodeURIComponent(token)}`, body);
     return { error: null };
   } catch (e) {
-    return { error: { message: (e as Error).message } };
+    const status = e instanceof ApiError ? e.status : undefined;
+    return { error: { message: (e as Error).message, status } };
   }
 }
 

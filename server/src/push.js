@@ -22,7 +22,9 @@ if (PUB && PRIV) {
 export const pushPublicKey = configured ? PUB : null;
 
 // Send a push to all of a user's web subscriptions. Best-effort; prunes dead subs
-// (404/410 = subscription gone). Never throws to the caller.
+// (404/410 = subscription gone; 403 = VAPID mismatch, e.g. keys rotated — the sub
+// can't be delivered to with the current keys, so drop it and let the user re-enable).
+// Never throws to the caller.
 export async function sendPush(userId, payload) {
   if (!configured) return;
   try {
@@ -37,7 +39,7 @@ export async function sendPush(userId, payload) {
       try {
         await webpush.sendNotification(sub, body);
       } catch (e) {
-        if (e.statusCode === 404 || e.statusCode === 410) {
+        if (e.statusCode === 404 || e.statusCode === 410 || e.statusCode === 403) {
           await pool.query(`delete from public.device_tokens where token = $1`, [token]).catch(() => {});
         } else {
           console.error("push send failed:", e.statusCode, e.message);

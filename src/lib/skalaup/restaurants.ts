@@ -26,6 +26,8 @@ export type RestaurantInput = {
   active?: boolean;
   // Full desired set of shift templates; when provided, replaces the stored set.
   shiftTemplates?: ShiftTemplate[];
+  // Full desired set of linked member ids; when provided, replaces the stored links.
+  memberUserIds?: string[];
 };
 
 async function wrap<T>(p: Promise<T>, fallback: T): Promise<Result<T>> {

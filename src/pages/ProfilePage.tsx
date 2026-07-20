@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { UserCircle, Star, Mail, Shield, Camera, Loader2 } from "lucide-react";
+import { UserCircle, Star, Mail, Shield, Camera, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { uploadProfilePhoto } from "@/lib/skalaup/uploads";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -56,6 +56,10 @@ export default function ProfilePage() {
   const [newPwd, setNewPwd] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
   const [changingPwd, setChangingPwd] = useState(false);
+  // Collapsed by default to save vertical space on mobile; auto-opens when the
+  // user is on a temporary password and must change it (FR-B4).
+  const [pwdOpen, setPwdOpen] = useState(false);
+  useEffect(() => { if (user?.mustChangePassword) setPwdOpen(true); }, [user?.mustChangePassword]);
 
   const changePassword = async () => {
     if (newPwd.length < 6) { toast.error(t("skala.profile.passwordTooShort")); return; }
@@ -304,33 +308,46 @@ export default function ProfilePage() {
               </Button>
             </div>
 
-            {/* Security — change password (last, per client 2026-07-20). */}
-            <Card className="p-5 space-y-4">
-              <h2 className="font-semibold text-foreground">{t("skala.profile.changePassword")}</h2>
-              {user?.mustChangePassword && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                  {t("skala.profile.tempPasswordNotice")}
+            {/* Security — change password (last, per client 2026-07-20). Collapsed
+                by default so it doesn't dominate the screen on mobile. */}
+            <Card className="p-5">
+              <button
+                type="button"
+                onClick={() => setPwdOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 text-left"
+                aria-expanded={pwdOpen}
+              >
+                <h2 className="font-semibold text-foreground">{t("skala.profile.changePassword")}</h2>
+                {pwdOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              </button>
+              {pwdOpen && (
+                <div className="space-y-4 pt-4">
+                  {user?.mustChangePassword && (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                      {t("skala.profile.tempPasswordNotice")}
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label>{t("skala.profile.currentPassword")}</Label>
+                    <Input type="password" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>{t("skala.profile.newPassword")}</Label>
+                      <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>{t("skala.profile.confirmPassword")}</Label>
+                      <Input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button variant="outline" onClick={() => void changePassword()} disabled={changingPwd}>
+                      {t("skala.profile.changePassword")}
+                    </Button>
+                  </div>
                 </div>
               )}
-              <div className="space-y-1.5">
-                <Label>{t("skala.profile.currentPassword")}</Label>
-                <Input type="password" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>{t("skala.profile.newPassword")}</Label>
-                  <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("skala.profile.confirmPassword")}</Label>
-                  <Input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button variant="outline" onClick={() => void changePassword()} disabled={changingPwd}>
-                  {t("skala.profile.changePassword")}
-                </Button>
-              </div>
             </Card>
           </>
         )}

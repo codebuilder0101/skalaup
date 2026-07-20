@@ -20,6 +20,7 @@ import {
   type RestaurantInput,
 } from "@/lib/skalaup/restaurants";
 import type { Restaurant, ShiftTemplate, NoShowDiscountMode } from "@/lib/skalaup/types";
+import { listFreelancers, type FreelancerWithProfile } from "@/lib/skalaup/freelancers";
 import { maskCep, maskCnpj, isValidCep, isValidCnpj } from "@/lib/br-format";
 
 type SlotRow = { label: string; startTime: string; endTime: string };
@@ -48,6 +49,8 @@ type FormState = {
   noShowDiscountMode: string; // "" = inherit
   noShowCustomAmount: string;
   weekendBonus: WeekendBonusChoice;
+  // linked collaborators (member_clients) that may work here
+  memberUserIds: string[];
 };
 
 const emptyForm: FormState = {
@@ -57,6 +60,7 @@ const emptyForm: FormState = {
   lunchBasePay: "", lunchBonusPay: "", dinnerBasePay: "", dinnerBonusPay: "",
   lateDiscountAmount: "", noShowDiscountMode: "", noShowCustomAmount: "",
   weekendBonus: "inherit",
+  memberUserIds: [],
 };
 
 const emptySlot = (): SlotRow => ({ label: "", startTime: "", endTime: "" });
@@ -89,6 +93,7 @@ function hasDuplicate(slots: SlotRow[]): boolean {
 export default function RestaurantsPage() {
   const { t } = useTranslation();
   const [items, setItems] = useState<Restaurant[]>([]);
+  const [freelancers, setFreelancers] = useState<FreelancerWithProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -119,9 +124,11 @@ export default function RestaurantsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await listRestaurants();
+    const [{ data, error }, fl] = await Promise.all([listRestaurants(), listFreelancers()]);
     if (error) toast.error(error.message);
     setItems(data);
+    // Only active members can be linked as clients (§3).
+    setFreelancers((fl.data ?? []).filter((f) => f.status === "active"));
     setLoading(false);
   }, []);
 
@@ -147,6 +154,7 @@ export default function RestaurantsPage() {
       noShowDiscountMode: r.noShowDiscountMode ?? "",
       noShowCustomAmount: toStr(r.noShowCustomAmount),
       weekendBonus: r.weekendBonusEnabled == null ? "inherit" : (r.weekendBonusEnabled ? "on" : "off"),
+      memberUserIds: r.memberUserIds ?? [],
     });
     setDialogOpen(true);
   };
@@ -220,6 +228,7 @@ export default function RestaurantsPage() {
       noShowCustomAmount: toNum(form.noShowCustomAmount),
       weekendBonusEnabled: form.weekendBonus === "inherit" ? null : form.weekendBonus === "on",
       shiftTemplates,
+      memberUserIds: form.memberUserIds,
     };
 
     setSaving(true);
@@ -483,6 +492,35 @@ export default function RestaurantsPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* --- Linked collaborators (member_clients) — lets a coordinator link
+                freelancers straight from the restaurant so it shows on their
+                "Minha Disponibilidade" without editing each one. --- */}
+            <div className="space-y-2 pt-3 border-t">
+              <h4 className="text-sm font-semibold text-foreground">{t("skala.restaurants.sectionMembers")}</h4>
+              <p className="text-xs text-muted-foreground">{t("skala.restaurants.membersHint")}</p>
+              {freelancers.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t("skala.restaurants.membersEmpty")}</p>
+              ) : (
+                <div className="max-h-44 overflow-y-auto rounded-md border border-border/60 divide-y divide-border/40">
+                  {freelancers.map((f) => {
+                    const checked = form.memberUserIds.includes(f.id);
+                    const toggle = () => setForm({
+                      ...form,
+                      memberUserIds: checked
+                        ? form.memberUserIds.filter((id) => id !== f.id)
+                        : [...form.memberUserIds, f.id],
+                    });
+                    return (
+                      <label key={f.id} className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50">
+                        <input type="checkbox" checked={checked} onChange={toggle} className="h-4 w-4 accent-primary" />
+                        <span className="text-sm text-foreground">{f.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

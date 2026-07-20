@@ -156,6 +156,8 @@ export interface Restaurant {
   weekendBonusEnabled: boolean | null;
   active: boolean;
   shiftTemplates: ShiftTemplate[];
+  // linked members (freelancers/visitors) that may work at this restaurant
+  memberUserIds: string[];
 }
 
 // ---- Freelancer profiles ---------------------------------------------------

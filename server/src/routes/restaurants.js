@@ -42,9 +42,40 @@ async function templatesFor(q, restaurantIds) {
   return map;
 }
 
+// Load linked member (freelancer/visitor) ids per restaurant, grouped by id.
+async function membersFor(q, restaurantIds) {
+  if (!restaurantIds.length) return {};
+  const { rows } = await q.query(
+    `select restaurant_id as "restaurantId", member_user_id as "memberUserId"
+       from public.member_clients where restaurant_id = any($1::uuid[])`,
+    [restaurantIds],
+  );
+  const map = {};
+  for (const r of rows) (map[r.restaurantId] ||= []).push(r.memberUserId);
+  return map;
+}
+
 async function withTemplates(q, rows) {
-  const map = await templatesFor(q, rows.map((r) => r.id));
-  return rows.map((r) => ({ ...r, shiftTemplates: map[r.id] || [] }));
+  const ids = rows.map((r) => r.id);
+  const [tpl, mem] = await Promise.all([templatesFor(q, ids), membersFor(q, ids)]);
+  return rows.map((r) => ({ ...r, shiftTemplates: tpl[r.id] || [], memberUserIds: mem[r.id] || [] }));
+}
+
+// Replace the full set of linked members for a restaurant (mirror of the
+// freelancer-side replaceMemberClients). Lets a coordinator link collaborators
+// straight from the restaurant form so new restaurants show up on their
+// "Minha Disponibilidade" without editing each freelancer.
+async function replaceRestaurantMembers(client, restaurantId, userIds) {
+  await client.query(`delete from public.member_clients where restaurant_id = $1`, [restaurantId]);
+  const unique = [...new Set((userIds || []).filter(Boolean))];
+  if (unique.length) {
+    await client.query(
+      `insert into public.member_clients (member_user_id, restaurant_id)
+       select unnest($2::uuid[]), $1
+       on conflict (member_user_id, restaurant_id) do nothing`,
+      [restaurantId, unique],
+    );
+  }
 }
 
 // Empty string from a form means "clear / inherit global" → null.
@@ -165,6 +196,7 @@ router.post("/", requireOps, async (req, res) => {
     );
     const row = rows[0];
     if (Array.isArray(b.shiftTemplates)) await replaceTemplates(client, row.id, b.shiftTemplates);
+    if (Array.isArray(b.memberUserIds)) await replaceRestaurantMembers(client, row.id, b.memberUserIds);
     await client.query("commit");
     res.status(201).json((await withTemplates(pool, [row]))[0]);
   } catch (e) {
@@ -199,7 +231,8 @@ router.put("/:id", requireOps, async (req, res) => {
     if (b[k] !== undefined) { sets.push(`${col} = $${i++}`); vals.push(b[k]); }
   }
   const touchesTemplates = Array.isArray(b.shiftTemplates);
-  if (sets.length === 0 && !touchesTemplates) return res.status(400).json({ error: "No fields" });
+  const touchesMembers = Array.isArray(b.memberUserIds);
+  if (sets.length === 0 && !touchesTemplates && !touchesMembers) return res.status(400).json({ error: "No fields" });
 
   const client = await pool.connect();
   try {
@@ -216,6 +249,7 @@ router.put("/:id", requireOps, async (req, res) => {
     }
     if (!row) { await client.query("rollback"); return res.status(404).json({ error: "Not found" }); }
     if (touchesTemplates) await replaceTemplates(client, req.params.id, b.shiftTemplates);
+    if (Array.isArray(b.memberUserIds)) await replaceRestaurantMembers(client, req.params.id, b.memberUserIds);
     await client.query("commit");
     res.json((await withTemplates(pool, [row]))[0]);
   } catch (e) {

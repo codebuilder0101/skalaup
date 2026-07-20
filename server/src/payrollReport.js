@@ -85,6 +85,7 @@ export async function generateMonthPay(monthRefRaw) {
     const { rows } = await client.query(
       `select a.id, a.user_id as "userId", a.restaurant_id as "restaurantId",
               a.date::text as date, a.shift_type as "shiftType",
+              att.checkin_at as "checkinAt",
               coalesce(att.no_show, false) as "noShow", ab.type as "absenceType"
          from public.schedule_assignments a
          left join public.shift_attendance att on att.assignment_id = a.id
@@ -93,26 +94,38 @@ export async function generateMonthPay(monthRefRaw) {
       [from, to],
     );
 
-    // Weekend-bonus eligibility per (user, week): all 4 mandatory shifts assigned,
-    // no unjustified furo among them, at most 1 justified atestado (§8.2).
-    const oblig = new Map(); // `${userId}|${monday}` -> { slots:Set, unjust, just }
+    // A shift counts as WORKED only when it has a real check-in (att.checkin_at) —
+    // which the coordinator also sets when recording attendance by hand for a
+    // dead-battery / app-down case (§4 OBS). Being merely scheduled (published) is
+    // NOT enough: the pay must follow the worked schedule, not the planned one.
+    const wasWorked = (r) => !!r.checkinAt && !r.noShow && !r.absenceType;
+
+    // Weekend-bonus eligibility per (user, week): all 4 mandatory shifts assigned AND
+    // each one WORKED (checked-in), with at most 1 justified atestado standing in for a
+    // worked shift; any mandatory slot that was neither worked nor justified loses the
+    // bonus for the week (§8.2).
+    const oblig = new Map(); // `${userId}|${monday}` -> { slots:Set, worked, justified, missed }
     for (const r of rows) {
       if (!isWeekendMandatory(weekdayOf(r.date), r.shiftType)) continue;
       const key = `${r.userId}|${mondayOf(r.date)}`;
       let e = oblig.get(key);
-      if (!e) { e = { slots: new Set(), unjust: 0, just: 0 }; oblig.set(key, e); }
+      if (!e) { e = { slots: new Set(), worked: 0, justified: 0, missed: 0 }; oblig.set(key, e); }
       const slot = `${r.date}|${r.shiftType}`;
       if (e.slots.has(slot)) continue;
       e.slots.add(slot);
-      if (r.absenceType === "no_show_unjustified") e.unjust += 1;
-      else if (r.absenceType === "justified") e.just += 1;
+      if (wasWorked(r)) e.worked += 1;
+      else if (r.absenceType === "justified") e.justified += 1;
+      else e.missed += 1; // unjustified furo OR simply no check-in
     }
     const isEligible = (userId, date) => {
       const e = oblig.get(`${userId}|${mondayOf(date)}`);
-      return !!e && e.slots.size === 4 && e.unjust === 0 && e.just <= 1;
+      return !!e && e.slots.size === 4 && e.missed === 0 && e.justified <= 1;
     };
 
-    // Build the pay lines for in-month worked shifts (worked = not a no-show/absence).
+    // Build the pay lines for in-month WORKED shifts. Worked = has a real check-in and
+    // is not a no-show/absence. A shift that was only planned (published) but never
+    // checked in is NOT paid — this is the fix for paying the planned instead of the
+    // worked schedule.
     const monthEnd = nextMonth(monthRef);
     const resolve = await settingsResolver();
     const ent = { user: [], rest: [], type: [], ref: [], amount: [], shiftCount: [], notes: [] };
@@ -120,8 +133,7 @@ export async function generateMonthPay(monthRefRaw) {
 
     for (const r of rows) {
       const inMonth = r.date >= monthRef && r.date < monthEnd;
-      const worked = !r.noShow && !r.absenceType;
-      if (!inMonth || !worked) continue;
+      if (!inMonth || !wasWorked(r)) continue;
 
       const s = await resolve(r.restaurantId, r.shiftType);
       const eligible = s.bonusEnabled && isEligible(r.userId, r.date);

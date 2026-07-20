@@ -60,13 +60,23 @@ const SELECT = `
   from public.users u
   left join public.freelancer_profiles p on p.user_id = u.id`;
 
-// --- Freelancer self-registration allow-list (client 2026-07-19) ---
-// An admin/coordinator pre-registers a freelancer's email here; the freelancer then
-// self-registers with that email on the public /register page (auth.js). These routes
-// MUST stay above the "/:id" routes so "authorized-emails" is not read as an id.
-router.get("/authorized-emails", requireOps, async (_req, res) => {
+// --- Self-registration allow-list (client 2026-07-19, extended 2026-07-20) ---
+// An administrator pre-registers an email here TOGETHER WITH the role that person will
+// hold; they then self-register with that email on the public /register page (auth.js),
+// which reads the role from this row. Nobody picks their own role. These routes MUST
+// stay above the "/:id" routes so "authorized-emails" is not read as an id.
+
+// Granting a role IS granting access, so it is administrator-only (client 2026-07-20)
+// — a coordinator runs the operation but never decides who is what.
+const requireAdmin = requireRole("administrator");
+const GRANTABLE_ROLES = {
+  administrator: ["coordinator", "restaurant_manager", "freelancer", "visitor"],
+};
+
+router.get("/authorized-emails", requireAdmin, async (_req, res) => {
   const { rows } = await pool.query(
-    `select a.id, a.email, a.created_at as "createdAt", a.claimed_at as "claimedAt",
+    `select a.id, a.email, a.role, a.restaurant_ids as "restaurantIds",
+            a.created_at as "createdAt", a.claimed_at as "claimedAt",
             u.id as "userId", u.name as "userName", u.status as "userStatus"
        from public.authorized_freelancer_emails a
        left join public.users u on lower(u.email) = a.email
@@ -75,17 +85,32 @@ router.get("/authorized-emails", requireOps, async (_req, res) => {
   res.json(rows);
 });
 
-router.post("/authorized-emails", requireOps, async (req, res) => {
+// The roles the CALLER may authorize — drives the picker in the UI.
+router.get("/authorized-emails/roles", requireAdmin, (req, res) => {
+  res.json({ roles: GRANTABLE_ROLES[req.user.role] || [] });
+});
+
+router.post("/authorized-emails", requireAdmin, async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: "E-mail inválido." });
   }
+  const role = String(req.body?.role || "freelancer");
+  const grantable = GRANTABLE_ROLES[req.user.role] || [];
+  if (!grantable.includes(role)) {
+    return res.status(403).json({ error: "Você não pode autorizar este cargo." });
+  }
+  // A coordinator sees every restaurant, so links would be meaningless for that role.
+  const restaurantIds = role === "coordinator" || !Array.isArray(req.body?.restaurantIds)
+    ? []
+    : [...new Set(req.body.restaurantIds.filter(Boolean))];
   try {
     const row = await one(
-      `insert into public.authorized_freelancer_emails (email, created_by)
-       values ($1, $2)
-       returning id, email, created_at as "createdAt", claimed_at as "claimedAt"`,
-      [email, req.user.sub],
+      `insert into public.authorized_freelancer_emails (email, role, restaurant_ids, created_by)
+       values ($1, $2, $3::uuid[], $4)
+       returning id, email, role, restaurant_ids as "restaurantIds",
+                 created_at as "createdAt", claimed_at as "claimedAt"`,
+      [email, role, restaurantIds, req.user.sub],
     );
     res.status(201).json(row);
   } catch (e) {
@@ -94,7 +119,7 @@ router.post("/authorized-emails", requireOps, async (req, res) => {
   }
 });
 
-router.delete("/authorized-emails/:id", requireOps, async (req, res) => {
+router.delete("/authorized-emails/:id", requireAdmin, async (req, res) => {
   await pool.query(`delete from public.authorized_freelancer_emails where id = $1`, [req.params.id]);
   res.json({ ok: true });
 });

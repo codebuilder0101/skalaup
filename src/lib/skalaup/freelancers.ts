@@ -26,11 +26,16 @@ export async function getFreelancer(userId: string): Promise<Result<FreelancerWi
   return wrap(api.get<FreelancerWithProfile>(`/freelancers/${userId}`), null);
 }
 
-// Freelancer self-registration allow-list (client 2026-07-19). An admin pre-registers
-// emails; the freelancer then self-registers with that email on the sign-up page.
+// Self-registration allow-list (client 2026-07-19, extended 2026-07-20). An administrator
+// pre-registers an email together with the ROLE that person will hold; they then sign
+// up with that email and the server applies the role. Nobody picks their own role.
+export type AuthorizedRole = "coordinator" | "restaurant_manager" | "freelancer" | "visitor";
+
 export type AuthorizedEmail = {
   id: string;
   email: string;
+  role: AuthorizedRole;
+  restaurantIds: string[];
   createdAt: string;
   claimedAt: string | null;
   userId: string | null;
@@ -42,9 +47,25 @@ export async function listAuthorizedEmails(): Promise<Result<AuthorizedEmail[]>>
   return wrap(api.get<AuthorizedEmail[]>("/freelancers/authorized-emails"), []);
 }
 
-export async function addAuthorizedEmail(email: string): Promise<Result<AuthorizedEmail | null>> {
+// The roles the logged-in user is allowed to hand out (administrator may grant
+// coordinator; a coordinator may not). Drives the picker options.
+export async function listGrantableRoles(): Promise<Result<AuthorizedRole[]>> {
   try {
-    return { data: await api.post<AuthorizedEmail>("/freelancers/authorized-emails", { email }), error: null };
+    const res = await api.get<{ roles: AuthorizedRole[] }>("/freelancers/authorized-emails/roles");
+    return { data: res.roles ?? [], error: null };
+  } catch (e) {
+    return { data: [], error: { message: (e as Error).message } };
+  }
+}
+
+export async function addAuthorizedEmail(
+  email: string, role: AuthorizedRole, restaurantIds: string[] = [],
+): Promise<Result<AuthorizedEmail | null>> {
+  try {
+    return {
+      data: await api.post<AuthorizedEmail>("/freelancers/authorized-emails", { email, role, restaurantIds }),
+      error: null,
+    };
   } catch (e) {
     return { data: null, error: { message: (e as Error).message } };
   }

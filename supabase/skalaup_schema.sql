@@ -649,15 +649,10 @@ create index if not exists idx_notifications_unread on public.notifications(reci
 
 -- 'waitlist_opening' (§3.4 vacancy alert) added after the original list shipped.
 -- 'schedule_assigned'/'schedule_removed' (§R14b immediate coordinator-assign notify).
--- Widen the type check constraint idempotently for existing databases.
-alter table public.notifications drop constraint if exists notifications_type_check;
-alter table public.notifications add constraint notifications_type_check check (type in (
-  'day_start_reminder','checkout_reminder','checkin_absence','third_late',
-  'bonus_loss_warning','second_no_show','swap_request','availability_cancelled',
-  'coverage_deficit','availability_reminder','schedule_conflict',
-  'weekday_eligibility','manager_checkin_checkout','feedback_received',
-  'feedback_request','schedule_published','schedule_assigned','schedule_removed',
-  'shift_reminder','waitlist_opening','birthday','inactivity_warning','profile_inactivated'));
+-- The type check is widened ONCE, at the bottom of this file — see the authoritative
+-- re-add there. Re-declaring it here too used to break `npm run migrate` on any real
+-- database: every ADD validates against existing rows immediately, so this copy
+-- rejected rows whose (newer) type only appears in the later list.
 
 -- =============================================================================
 -- 23. DEVICE TOKENS (§14) — push to iOS / Android / web
@@ -891,15 +886,8 @@ create unique index if not exists idx_public_ratings_daily
   where device_hash is not null;
 
 -- Items 6/7 — new notification types: birthday self-alert; inactivity pre-warning
--- and inactivation notice (both to coordination).
-alter table public.notifications drop constraint if exists notifications_type_check;
-alter table public.notifications add constraint notifications_type_check check (type in (
-  'day_start_reminder','checkout_reminder','checkin_absence','third_late',
-  'bonus_loss_warning','second_no_show','swap_request','availability_cancelled',
-  'coverage_deficit','availability_reminder','schedule_conflict',
-  'weekday_eligibility','manager_checkin_checkout','feedback_received',
-  'feedback_request','schedule_published','schedule_assigned','schedule_removed',
-  'shift_reminder','waitlist_opening','birthday','inactivity_warning','profile_inactivated'));
+-- and inactivation notice (both to coordination). Folded into the single
+-- authoritative type check at the bottom of this file.
 
 -- =============================================================================
 -- R20 (client round 2026-07): schema drift fixes + extra-shift confirmation flow.
@@ -936,6 +924,22 @@ create table if not exists public.authorized_freelancer_emails (
   created_by  uuid references public.users(id) on delete set null,
   claimed_at  timestamptz
 );
+
+-- The allow-list now carries the ROLE the person is authorized to hold, so nobody
+-- picks their own role at sign-up (client 2026-07-20). Coordination pre-registers
+-- the email WITH the role (and the restaurants they belong to); /auth/register just
+-- applies it. Existing rows keep 'freelancer', which is what they meant.
+-- Idempotent for existing databases.
+alter table public.authorized_freelancer_emails
+  add column if not exists role text not null default 'freelancer';
+alter table public.authorized_freelancer_emails
+  add column if not exists restaurant_ids uuid[] not null default '{}';
+
+do $$ begin
+  alter table public.authorized_freelancer_emails
+    add constraint authorized_emails_role_check
+    check (role in ('coordinator','restaurant_manager','freelancer','visitor'));
+exception when duplicate_object then null; end $$;
 
 -- Customer QR ratings now require coordination validation before they score (client
 -- 2026-07-19). A new rating lands 'pending' and notifies coordination; a coordinator

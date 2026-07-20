@@ -6,13 +6,9 @@ import { roleHomePath } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from "@/components/ui/select";
 import { SUPPORTED_LANGUAGES, setStoredLanguage, type SupportedLanguage } from "@/i18n/config";
 
 type Mode = "login" | "register";
-const SIGNUP_ROLES = ["freelancer", "restaurant_manager", "coordinator"] as const;
 
 export default function AuthPage() {
   const { t, i18n } = useTranslation();
@@ -24,7 +20,6 @@ export default function AuthPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<string>("freelancer");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -69,7 +64,7 @@ export default function AuthPage() {
       if (res.success) navigate(roleHomePath[user?.role ?? "freelancer"], { replace: true });
       else setError(roleError(res.error));
     } else {
-      const res = await register({ name: name.trim(), email: email.trim(), password, role });
+      const res = await register({ name: name.trim(), email: email.trim(), password });
       setSubmitting(false);
       if (res.success) {
         if (res.pending) {
@@ -147,25 +142,9 @@ export default function AuthPage() {
                   <Input id="name" type="text" autoComplete="name" value={name}
                     onChange={(e) => setName(e.target.value)} required />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>{t("skala.auth.role")}</Label>
-                  <Select value={role} onValueChange={setRole}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {SIGNUP_ROLES.map((r) => (
-                        <SelectItem key={r} value={r}>
-                          {r === "coordinator" ? t("skala.roles.coordinator")
-                            : r === "restaurant_manager" ? t("skala.roles.restaurantManager")
-                              : t("skala.roles.freelancer")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {role === "freelancer" && (
-                  <p className="text-xs text-muted-foreground">{t("skala.auth.freelancerAuthorizedHint")}</p>
-                )}
+                {/* No role picker: the role comes from the invitation coordination
+                    registered for this email (client 2026-07-20). */}
+                <p className="text-xs text-muted-foreground">{t("skala.auth.invitedHint")}</p>
               </>
             )}
             <div className="space-y-1.5">

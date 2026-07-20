@@ -9,7 +9,8 @@ type RegisterInput = {
   name: string;
   email: string;
   password: string;
-  role: string;
+  // No `role`: the server takes it from the invitation registered for this email
+  // (client 2026-07-20) and ignores anything the client sends.
   // Optional freelancer registration "ficha" fields.
   phone?: string;
   cpf?: string;

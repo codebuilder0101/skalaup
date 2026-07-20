@@ -11,10 +11,9 @@ const SAFE_USER = `id, name, email, phone, role, status,
   promoted_to_member_at as "promotedToMemberAt",
   created_at as "createdAt", updated_at as "updatedAt"`;
 
-// Roles a person may request at sign-up. Every sign-up is created as
-// `pending` and a coordinator must approve it before the account can log in,
-// so requesting an elevated role is only a *request* — never auto-granted.
-const SIGNUP_ROLES = ["freelancer", "restaurant_manager", "coordinator"];
+// Nobody picks their own role at sign-up (client 2026-07-20). The role is decided by
+// an administrator when they authorize the email (authorized_freelancer_emails.role)
+// and is simply applied here — an unlisted email cannot register at all.
 
 // POST /api/auth/login
 router.post("/login", async (req, res) => {
@@ -72,19 +71,18 @@ router.post("/change-password", requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/auth/register  — public self sign-up.
-// Freelancers: only a pre-authorized email (allow-listed by an admin, client
-// 2026-07-19) may register. Because the admin already authorized them, the account
-// is created ACTIVE and the freelancer is auto-logged-in (a token is returned) to go
-// straight to completing their profile. They complete the full ficha later in /profile.
-// Coordinator / restaurant_manager: unchanged — created `pending`, no token, must be
-// approved by an admin before logging in.
+// POST /api/auth/register  — public self sign-up, invitation-only.
+// The email must have been pre-authorized by an administrator, and THAT record decides
+// the role — a `role` sent by the client is ignored (client 2026-07-20). An unlisted
+// email is rejected outright.
+// Freelancer/visitor: created ACTIVE and auto-logged-in (a token is returned) to go
+// straight to completing their ficha in /profile.
+// Coordinator / restaurant_manager: created `pending`, no token — an administrator
+// still confirms the elevated account in /approvals before it can log in.
 router.post("/register", async (req, res) => {
   const name = String(req.body?.name || "").trim();
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
-  const requested = String(req.body?.role || "freelancer");
-  const role = SIGNUP_ROLES.includes(requested) ? requested : "freelancer";
   // Optional freelancer registration "ficha" fields (kept for backward compat; the
   // simplified sign-up no longer sends them — the freelancer fills the ficha in /profile).
   const phone = req.body?.phone ? String(req.body.phone).trim() : null;
@@ -97,15 +95,19 @@ router.post("/register", async (req, res) => {
   if (!name || !email || !password) return res.status(400).json({ error: "Missing fields" });
   if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
 
-  // Freelancers must have been pre-authorized by an admin. Authorized ones start active.
-  let authorized = null;
-  if (role === "freelancer") {
-    authorized = await one(
-      `select id from public.authorized_freelancer_emails where email = $1`, [email],
-    );
-    if (!authorized) return res.status(403).json({ error: "auth.notAuthorized", code: "not_authorized" });
-  }
-  const status = role === "freelancer" ? "active" : "pending";
+  // The allow-list is the single source of truth for BOTH "may they register" and
+  // "as what". No entry → no account, whatever role they claim to be.
+  const authorized = await one(
+    `select id, role, restaurant_ids as "restaurantIds"
+       from public.authorized_freelancer_emails where email = $1`,
+    [email],
+  );
+  if (!authorized) return res.status(403).json({ error: "auth.notAuthorized", code: "not_authorized" });
+
+  const role = authorized.role;
+  const isTeam = role === "freelancer" || role === "visitor";
+  // Elevated roles still pass through /approvals as a second pair of eyes.
+  const status = isTeam ? "active" : "pending";
 
   const hash = await bcrypt.hash(password, 10);
   try {
@@ -114,21 +116,44 @@ router.post("/register", async (req, res) => {
        values ($1,$2,$3,$4,$5,$6) returning ${SAFE_USER}`,
       [name, email, hash, role, status, phone],
     );
-    if (role === "freelancer") {
-      // Seed an (empty-by-default) ficha row so the freelancer can complete it in /profile.
+    if (isTeam) {
+      // Seed an (empty-by-default) ficha row so they can complete it in /profile.
       await pool.query(
         `insert into public.freelancer_profiles
            (user_id, member_type, cpf, pix_key, whatsapp, home_address, home_cep)
-         values ($1, 'member', $2, $3, $4, $5, $6)
+         values ($1, $2, $3, $4, $5, $6, $7)
          on conflict (user_id) do update set
            cpf = excluded.cpf, pix_key = excluded.pix_key, whatsapp = excluded.whatsapp,
            home_address = excluded.home_address, home_cep = excluded.home_cep`,
-        [row.id, cpf, pixKey, whatsapp, homeAddress, homeCep],
+        [row.id, role === "visitor" ? "visitor" : "member", cpf, pixKey, whatsapp, homeAddress, homeCep],
       );
+    }
+
+    // Apply the restaurant links the administrator already chose in the invitation. Without
+    // this an approved manager would land with no restaurant at all (manager_assignments
+    // had no write path before) and see an empty app.
+    // (A coordinator sees every restaurant, so links are meaningless for that role.)
+    const restaurantIds = role === "coordinator"
+      ? []
+      : [...new Set((authorized.restaurantIds || []).filter(Boolean))];
+    if (restaurantIds.length) {
+      const table = role === "restaurant_manager"
+        ? { name: "manager_assignments", col: "manager_user_id" }
+        : { name: "member_clients", col: "member_user_id" };
       await pool.query(
-        `update public.authorized_freelancer_emails set claimed_at = now() where id = $1`,
-        [authorized.id],
+        `insert into public.${table.name} (${table.col}, restaurant_id)
+         select $1, unnest($2::uuid[])
+         on conflict (${table.col}, restaurant_id) do nothing`,
+        [row.id, restaurantIds],
       );
+    }
+
+    await pool.query(
+      `update public.authorized_freelancer_emails set claimed_at = now() where id = $1`,
+      [authorized.id],
+    );
+
+    if (isTeam) {
       // Active + authorized → auto-login so they land in the app to finish their ficha.
       const user = { id: row.id, name: row.name, email: row.email, role: row.role };
       return res.status(201).json({ token: signToken(user), user: { ...user, mustChangePassword: false } });

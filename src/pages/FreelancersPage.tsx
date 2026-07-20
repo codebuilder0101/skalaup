@@ -7,6 +7,7 @@ import {
   QrCode, Download, Printer,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,8 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   listFreelancers, createFreelancer, updateFreelancer, deleteFreelancer, setFreelancerStatus,
-  listAuthorizedEmails, addAuthorizedEmail, removeAuthorizedEmail,
-  type FreelancerWithProfile, type AuthorizedEmail,
+  listAuthorizedEmails, addAuthorizedEmail, removeAuthorizedEmail, listGrantableRoles,
+  type FreelancerWithProfile, type AuthorizedEmail, type AuthorizedRole,
 } from "@/lib/skalaup/freelancers";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
 import { addScoreEvent } from "@/lib/skalaup/score";
@@ -58,6 +59,7 @@ const emptyForm: FormState = {
 
 export default function FreelancersPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [items, setItems] = useState<FreelancerWithProfile[]>([]);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,29 +68,57 @@ export default function FreelancersPage() {
   const [saving, setSaving] = useState(false);
   const [tempPwd, setTempPwd] = useState<string | null>(null);
 
-  // Freelancer self-registration allow-list (client 2026-07-19): admin pre-registers
-  // emails; the freelancer then self-registers with that email on the sign-up page.
+  // Self-registration allow-list (client 2026-07-19, extended 2026-07-20): an administrator
+  // pre-registers an email TOGETHER WITH the role that person will hold; they then sign
+  // up with that email and the server applies the role. Nobody picks their own role.
   const [emailsOpen, setEmailsOpen] = useState(false);
   const [authEmails, setAuthEmails] = useState<AuthorizedEmail[]>([]);
   const [newEmail, setNewEmail] = useState("");
+  const [newRole, setNewRole] = useState<AuthorizedRole>("freelancer");
+  const [newRestaurantIds, setNewRestaurantIds] = useState<string[]>([]);
+  const [grantable, setGrantable] = useState<AuthorizedRole[]>([]);
   const [emailBusy, setEmailBusy] = useState(false);
 
+  // A coordinator sees every restaurant, so links are meaningless for that role.
+  const roleTakesRestaurants = newRole !== "coordinator";
+
+  const roleLabel = (r: AuthorizedRole) =>
+    r === "coordinator" ? t("skala.roles.coordinator")
+      : r === "restaurant_manager" ? t("skala.roles.restaurantManager")
+        : r === "visitor" ? t("skala.freelancers.visitor")
+          : t("skala.roles.freelancer");
+
   const loadAuthEmails = useCallback(async () => {
-    const { data, error } = await listAuthorizedEmails();
-    if (error) { toast.error(error.message); return; }
-    setAuthEmails(data);
+    const [list, roles] = await Promise.all([listAuthorizedEmails(), listGrantableRoles()]);
+    if (list.error) { toast.error(list.error.message); return; }
+    setAuthEmails(list.data);
+    setGrantable(roles.data);
+    // Default to the least-privileged role this user may hand out.
+    if (roles.data.length && !roles.data.includes("freelancer")) setNewRole(roles.data[0]);
   }, []);
 
-  const openEmails = () => { setNewEmail(""); setEmailsOpen(true); void loadAuthEmails(); };
+  const openEmails = () => {
+    setNewEmail(""); setNewRole("freelancer"); setNewRestaurantIds([]);
+    setEmailsOpen(true); void loadAuthEmails();
+  };
+
+  const toggleNewRestaurant = (id: string) =>
+    setNewRestaurantIds((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
 
   const addEmail = async () => {
     const email = newEmail.trim().toLowerCase();
     if (!email) return;
     setEmailBusy(true);
-    const { data, error } = await addAuthorizedEmail(email);
+    const { data, error } = await addAuthorizedEmail(
+      email, newRole, roleTakesRestaurants ? newRestaurantIds : [],
+    );
     setEmailBusy(false);
     if (error) { toast.error(error.message); return; }
-    if (data) { setAuthEmails((xs) => [data, ...xs]); setNewEmail(""); toast.success(t("skala.freelancers.authEmails.added")); }
+    if (data) {
+      setAuthEmails((xs) => [data, ...xs]);
+      setNewEmail(""); setNewRestaurantIds([]);
+      toast.success(t("skala.freelancers.authEmails.added"));
+    }
   };
 
   const removeEmail = async (id: string) => {
@@ -317,9 +347,12 @@ export default function FreelancersPage() {
             <p className="text-sm text-muted-foreground mt-1">{t("skala.freelancers.subtitle")}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={openEmails}>
-              <Mail className="w-4 h-4 mr-1.5" />{t("skala.freelancers.authEmails.button")}
-            </Button>
+            {/* Granting a role is administrator-only (client 2026-07-20). */}
+            {user?.role === "administrator" && (
+              <Button variant="outline" onClick={openEmails}>
+                <Mail className="w-4 h-4 mr-1.5" />{t("skala.freelancers.authEmails.button")}
+              </Button>
+            )}
             <Button onClick={openCreate}><Plus className="w-4 h-4 mr-1.5" />{t("skala.freelancers.add")}</Button>
           </div>
         </div>
@@ -432,13 +465,58 @@ export default function FreelancersPage() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">{t("skala.freelancers.authEmails.hint")}</p>
-          <div className="flex items-center gap-2">
+          <div className="space-y-3">
             <Input
               type="email" placeholder="email@exemplo.com" value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addEmail(); } }}
             />
-            <Button onClick={() => void addEmail()} disabled={emailBusy || !newEmail.trim()}>
+            <div className="space-y-1.5">
+              <Label>{t("skala.freelancers.authEmails.role")}</Label>
+              <Select value={newRole} onValueChange={(v) => setNewRole(v as AuthorizedRole)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {grantable.map((r) => (
+                    <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Restaurants are chosen HERE so the person lands already linked — an
+                approved manager used to arrive with no restaurant at all. */}
+            {roleTakesRestaurants && restaurants.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5">
+                  <Store className="w-3.5 h-3.5" />{t("skala.freelancers.clients")}
+                </Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {restaurants.map((r) => {
+                    const on = newRestaurantIds.includes(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleNewRestaurant(r.id)}
+                        className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                          on
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {r.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <Button
+              className="w-full"
+              onClick={() => void addEmail()}
+              disabled={emailBusy || !newEmail.trim() || grantable.length === 0}
+            >
               <Plus className="w-4 h-4 mr-1.5" />{t("skala.freelancers.authEmails.add")}
             </Button>
           </div>
@@ -449,11 +527,14 @@ export default function FreelancersPage() {
               <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{a.email}</p>
-                  {a.claimedAt || a.userId ? (
-                    <Badge variant="secondary" className="mt-0.5">{t("skala.freelancers.authEmails.registered")}</Badge>
-                  ) : (
-                    <Badge variant="outline" className="mt-0.5">{t("skala.freelancers.authEmails.invited")}</Badge>
-                  )}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                    <Badge>{roleLabel(a.role)}</Badge>
+                    {a.claimedAt || a.userId ? (
+                      <Badge variant="secondary">{t("skala.freelancers.authEmails.registered")}</Badge>
+                    ) : (
+                      <Badge variant="outline">{t("skala.freelancers.authEmails.invited")}</Badge>
+                    )}
+                  </div>
                 </div>
                 <Button variant="ghost" size="icon" onClick={() => void removeEmail(a.id)} title={t("skala.common.delete")}>
                   <Trash2 className="w-4 h-4 text-destructive" />

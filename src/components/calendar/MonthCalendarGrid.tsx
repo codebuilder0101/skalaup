@@ -2,14 +2,15 @@ import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 
 // ---------------------------------------------------------------------------
-// Shared, presentational month calendar — Sunday-first to match the pt-BR
-// calendar our users expect (weekday header reads D S T Q Q S S). It renders a
-// month grid with a per-day "mark" (lunch/dinner dots + a count) and reports the
-// tapped day via onSelectDay. It fetches nothing; callers build the marks map.
+// Shared, presentational month calendar — Monday-first (weekday header reads
+// S T Q Q S S D), matching how the operation reads a work week (client request
+// 2026-07-20). It renders a month grid with a per-day "mark" (lunch/dinner dots
+// + a count) and reports the tapped day via onSelectDay. It fetches nothing;
+// callers build the marks map.
 //
 // Used by the freelancer schedule (published shifts) and availability entry
-// (draft picks). The coordinator scheduling board keeps its own Monday-first
-// MonthCalendar (different data model), so this stays freelancer-focused.
+// (draft picks). The coordinator scheduling board has its own MonthCalendar
+// (different data model) kept Monday-first to match.
 // ---------------------------------------------------------------------------
 
 export type DayMark = {
@@ -23,15 +24,17 @@ const dateKey = (d: string) => d.slice(0, 10);
 const addDays = (date: string, n: number) =>
   new Date(Date.parse(`${dateKey(date)}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 const utcDow = (date: string) => new Date(`${dateKey(date)}T00:00:00Z`).getUTCDay(); // 0=Sun..6=Sat
+// Column index in a Monday-first grid: 0=Mon..6=Sun.
+const colDow = (date: string) => (utcDow(date) + 6) % 7;
 
-// Build the Sunday-first grid of YYYY-MM-DD cells covering `month`.
+// Build the Monday-first grid of YYYY-MM-DD cells covering `month`.
 export function monthGridCells(month: string): string[] {
   const ym = dateKey(month).slice(0, 7);
   const [y, m] = ym.split("-").map(Number);
   const firstOfMonth = `${ym}-01`;
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const gridStart = addDays(firstOfMonth, -utcDow(firstOfMonth)); // back up to Sunday
-  const weeks = Math.ceil((utcDow(firstOfMonth) + daysInMonth) / 7);
+  const gridStart = addDays(firstOfMonth, -colDow(firstOfMonth)); // back up to Monday
+  const weeks = Math.ceil((colDow(firstOfMonth) + daysInMonth) / 7);
   return Array.from({ length: weeks * 7 }, (_, i) => addDays(gridStart, i));
 }
 
@@ -57,11 +60,11 @@ export function MonthCalendarGrid({
   const monthKey = dateKey(month).slice(0, 7);
   const cells = useMemo(() => monthGridCells(month), [month]);
 
-  // Localized weekday abbreviations, Sunday-first (2023-01-01 was a Sunday).
+  // Localized weekday abbreviations, Monday-first (2023-01-02 was a Monday).
   const weekdayLabels = useMemo(() => {
     const fmt = new Intl.DateTimeFormat(lng, { weekday: "short", timeZone: "UTC" });
     return Array.from({ length: 7 }, (_, i) =>
-      fmt.format(new Date(`${addDays("2023-01-01", i)}T00:00:00Z`)),
+      fmt.format(new Date(`${addDays("2023-01-02", i)}T00:00:00Z`)),
     );
   }, [lng]);
 
@@ -89,7 +92,7 @@ export function MonthCalendarGrid({
               type="button"
               onClick={() => onSelectDay(date)}
               aria-pressed={isSelected}
-              aria-label={`${dayNum} ${weekdayLabels[utcDow(date)]}${count > 0 ? `, ${count}` : ""}`}
+              aria-label={`${dayNum} ${weekdayLabels[colDow(date)]}${count > 0 ? `, ${count}` : ""}`}
               className={`min-h-[46px] sm:min-h-[52px] rounded-lg border p-1 flex flex-col items-center gap-0.5 transition-colors
                 ${isSelected ? "border-primary bg-primary/10" : "border-border/50 hover:bg-accent/40"}
                 ${isToday && !isSelected ? "ring-1 ring-primary/50" : ""}

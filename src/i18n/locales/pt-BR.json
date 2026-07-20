@@ -2066,7 +2066,10 @@
         "late_critical": "Atraso gravíssimo",
         "swap_requested": "Troca de turno solicitada",
         "no_show_unjustified": "Furo sem justificativa",
-        "manual_adjustment": "Ajuste manual da coordenação"
+        "manual_adjustment": "Ajuste manual da coordenação",
+        "flexible_availability": "Disponibilidade flexível",
+        "furo_covered": "Cobertura de furo",
+        "customer_rating": "Avaliação de cliente"
       }
     },
     "swaps": {

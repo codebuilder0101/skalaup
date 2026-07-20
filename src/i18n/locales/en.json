@@ -2066,7 +2066,10 @@
         "late_critical": "Critical lateness",
         "swap_requested": "Shift swap requested",
         "no_show_unjustified": "Unjustified no-show",
-        "manual_adjustment": "Manual adjustment by coordination"
+        "manual_adjustment": "Manual adjustment by coordination",
+        "flexible_availability": "Flexible availability",
+        "furo_covered": "Covered a no-show",
+        "customer_rating": "Customer rating"
       }
     },
     "swaps": {

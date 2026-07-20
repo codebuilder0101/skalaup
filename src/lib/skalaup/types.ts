@@ -31,7 +31,8 @@ export type ScoreEventType =
   | "innovation_video" | "charity_event" | "inperson_training"
   | "feedback_fundamentos" | "feedback_proatividade" | "feedback_encantamento"
   | "feedback_extraordinario" | "late_light" | "late_moderate" | "late_severe"
-  | "late_critical" | "swap_requested" | "no_show_unjustified" | "manual_adjustment";
+  | "late_critical" | "swap_requested" | "no_show_unjustified" | "manual_adjustment"
+  | "flexible_availability" | "furo_covered" | "customer_rating";
 export type NotificationType =
   | "day_start_reminder" | "checkout_reminder" | "checkin_absence" | "third_late"
   | "bonus_loss_warning" | "second_no_show" | "swap_request" | "availability_cancelled"
@@ -63,6 +64,9 @@ export const SCORE_POINTS: Record<ScoreEventType, number> = {
   swap_requested: -1,
   no_show_unjustified: -5,
   manual_adjustment: 0,
+  flexible_availability: 2,
+  furo_covered: 3,
+  customer_rating: 0, // variable: set by the rating type the coordinator picks
 };
 
 // ---- Users -----------------------------------------------------------------

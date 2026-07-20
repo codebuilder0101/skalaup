@@ -3,19 +3,19 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MonthCalendarGrid, monthGridCells, type DayMark } from "./MonthCalendarGrid";
 
 describe("monthGridCells", () => {
-  it("builds a Sunday-first grid whose length is a multiple of 7", () => {
-    // July 2026 starts on a Wednesday → Sunday-first grid begins Sun Jun 28.
+  it("builds a Monday-first grid whose length is a multiple of 7", () => {
+    // July 2026 starts on a Wednesday → Monday-first grid begins Mon Jun 29.
     const cells = monthGridCells("2026-07-15");
     expect(cells.length % 7).toBe(0);
     expect(cells.length).toBe(35);
-    expect(cells[0]).toBe("2026-06-28"); // the Sunday before July 1
+    expect(cells[0]).toBe("2026-06-29"); // the Monday before July 1
     expect(cells).toContain("2026-07-31");
   });
 
   it("accepts a bare first-of-month reference", () => {
-    // Feb 2024 (leap): Feb 1 is a Thursday → grid starts Sun Jan 28.
+    // Feb 2024 (leap): Feb 1 is a Thursday → grid starts Mon Jan 29.
     const cells = monthGridCells("2024-02-01");
-    expect(cells[0]).toBe("2024-01-28");
+    expect(cells[0]).toBe("2024-01-29");
     expect(cells).toContain("2024-02-29");
   });
 });
@@ -39,11 +39,11 @@ describe("MonthCalendarGrid", () => {
     return onSelectDay;
   };
 
-  it("renders a Sunday-first grid (first cell is the preceding Sunday)", () => {
+  it("renders a Monday-first grid (first cell is the preceding Monday)", () => {
     renderCal();
     const buttons = screen.getAllByRole("button");
     expect(buttons.length).toBe(35);
-    expect(buttons[0].getAttribute("aria-label")).toMatch(/^28\b/); // Jun 28, a Sunday
+    expect(buttons[0].getAttribute("aria-label")).toMatch(/^29\b/); // Jun 29, a Monday
   });
 
   it("shows the day number and a count badge for days with multiple picks", () => {

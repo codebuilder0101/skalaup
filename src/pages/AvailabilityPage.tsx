@@ -170,6 +170,8 @@ export default function AvailabilityPage() {
     const { data, error } = await bulkSubmitAvailability(cycle.id, user.id, [...draft.values()]);
     setSubmitting(false);
     if (error) { toast.error(error.message); return; }
+    // Whether the flexibility bonus was already earned before this submit.
+    const hadFlexBefore = [...serverSet].some((k) => k.endsWith(`|${ANY}`));
     const m = new Map<string, DesiredSlot>();
     data.filter((s) => s.status === "submitted").forEach((s) =>
       m.set(slotKey(s.date, s.shiftType, s.restaurantId),
@@ -177,6 +179,11 @@ export default function AvailabilityPage() {
     setDraft(new Map(m));
     setServerSet(new Set(m.keys()));
     toast.success(t("skala.availability.submitted", { count: m.size }));
+    // Any "qualquer restaurante" slot earns the flexibility bonus (backend
+    // syncFlexibleScore). Confirm it the first time it's earned — this feedback was
+    // lost in the batch-submit refactor, so the points were being granted silently.
+    const hasFlexNow = [...m.values()].some((s) => s.restaurantId === null);
+    if (hasFlexNow && !hadFlexBefore) toast.success(t("skala.availability.flexibleToast"));
   };
 
   // The per-shift picker for a single day (rendered in the day-detail panel).

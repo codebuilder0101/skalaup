@@ -875,10 +875,10 @@ export default function SchedulingPage() {
               <Button
                 className="rounded-xl shadow-md shadow-primary/25"
                 onClick={() => void onPublish()}
-                disabled={busy || !cycle || published}
+                disabled={busy || !cycle}
               >
                 <Send className="mr-1.5 h-4 w-4" />
-                {published ? t("skala.scheduleBuilder.alreadyPublished") : t("skala.scheduleBuilder.publish")}
+                {published ? t("skala.scheduleBuilder.publishChanges") : t("skala.scheduleBuilder.publish")}
               </Button>
             </div>
           </div>

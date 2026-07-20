@@ -385,6 +385,15 @@ alter table public.schedule_assignments drop constraint if exists schedule_assig
 create unique index if not exists uq_assign_active_user_slot
   on public.schedule_assignments(user_id, date, shift_type) where status <> 'cancelled';
 
+-- Deferred schedule-change notifications (client 2026-07-20): after the escala is
+-- published, edits stay live but the affected freelancer is NOT notified until the
+-- coordinator publishes again. A row with notify_pending=true carries an un-sent
+-- change (an add that became published, or a removal to announce). Publish flushes
+-- these, notifying ONLY the users who actually changed, then clears the flag.
+alter table public.schedule_assignments add column if not exists notify_pending boolean not null default false;
+create index if not exists idx_assign_notify_pending
+  on public.schedule_assignments(cycle_id) where notify_pending = true;
+
 drop trigger if exists trg_schedule_assignments_updated_at on public.schedule_assignments;
 create trigger trg_schedule_assignments_updated_at before update on public.schedule_assignments
   for each row execute function public.set_updated_at();

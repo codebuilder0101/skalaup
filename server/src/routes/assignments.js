@@ -16,39 +16,13 @@ router.use(requireAuth);
 // (a manager may only touch their own restaurant — see canEditRestaurant).
 const requireSchedulers = requireRole("coordinator", "administrator", "restaurant_manager");
 
-const SHIFT_LABEL = { lunch: "Almoço", dinner: "Janta" };
-const dateBR = (iso) => String(iso).slice(0, 10).split("-").reverse().join("/"); // YYYY-MM-DD → DD/MM/YYYY
-const hhmm = (t) => String(t).slice(0, 5);
-
-// Immediately tell a freelancer their escala changed (§R14b — manual coordinator
-// assignments are published on creation, so the shift is already visible). The
-// bell row is written and a web push attempted; failures never break scheduling.
-async function notifyScheduleChange({ userId, type, restaurantId, date, shiftType, startTime, endTime }) {
-  try {
-    const r = await one(`select name from public.restaurants where id = $1`, [restaurantId]);
-    const where = r?.name ?? "restaurante";
-    const shift = SHIFT_LABEL[shiftType] || shiftType;
-    const added = type === "schedule_assigned";
-    await notify({
-      recipientUserId: userId,
-      type,
-      title: added ? "Novo turno na sua escala" : "Turno removido da sua escala",
-      body: added
-        ? `${shift} em ${where} — ${dateBR(date)}, ${hhmm(startTime)}–${hhmm(endTime)}.`
-        : `${shift} em ${where} — ${dateBR(date)} foi removido da sua escala.`,
-      data: { date: String(date).slice(0, 10), shiftType, restaurantId, path: "/my-schedule" },
-    });
-  } catch (e) {
-    console.error(`${type} notify failed:`, e.message);
-  }
-}
-
 const COLS = `id, cycle_id as "cycleId", restaurant_id as "restaurantId",
   user_id as "userId", date::text as date, shift_type as "shiftType",
   start_time as "startTime", end_time as "endTime", status,
   is_weekend_mandatory as "isWeekendMandatory", pay_rate_applied as "payRateApplied",
   bonus_applied as "bonusApplied", assigned_via as "assignedVia",
   created_by as "createdBy", published_at as "publishedAt",
+  notify_pending as "notifyPending",
   created_at as "createdAt", updated_at as "updatedAt"`;
 
 // GET /api/assignments?date=&restaurantId=&userId=&cycleId=&status=
@@ -134,14 +108,16 @@ router.post("/", requireSchedulers, async (req, res) => {
       assignedVia = cyc && cyc.status === "published" ? "waiting_list" : "coordinator";
     }
 
-    // Published on creation (§R14b): a manual coordinator/manager assignment is
-    // live immediately, so the freelancer sees it and is notified right away —
-    // no separate publish step. (Bulk auto-generate still creates drafts.)
+    // The shift is live immediately (published) so the coordinator sees the result,
+    // but the affected freelancer is NOT notified now (client 2026-07-20): the change
+    // is marked notify_pending and the alert is batched to the next publish, which
+    // notifies ONLY the freelancers who actually changed. (Bulk auto-generate still
+    // creates drafts, which publish flips to published + notifies.)
     const row = await one(
       `insert into public.schedule_assignments
          (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time,
-          status, is_weekend_mandatory, assigned_via, created_by, published_at)
-       values ($1,$2,$3,$4,$5,$6,$7,'published',$8,$9,$10, now())
+          status, is_weekend_mandatory, assigned_via, created_by, published_at, notify_pending)
+       values ($1,$2,$3,$4,$5,$6,$7,'published',$8,$9,$10, now(), true)
        returning ${COLS}`,
       [
         b.cycleId ?? null, b.restaurantId, b.userId, b.date, b.shiftType,
@@ -149,12 +125,6 @@ router.post("/", requireSchedulers, async (req, res) => {
         assignedVia, req.user.sub,
       ],
     );
-
-    // Immediate notification to the assigned freelancer (bell + best-effort push).
-    await notifyScheduleChange({
-      userId: b.userId, type: "schedule_assigned", restaurantId: b.restaurantId,
-      date: b.date, shiftType: b.shiftType, startTime: times.startTime, endTime: times.endTime,
-    });
 
     // Weekday eligibility (§8.3): weekday shifts (Mon–Thu) require all 4 weekend
     // mandatory shifts of the preceding weekend — warn only, never block.
@@ -195,7 +165,7 @@ router.put("/:id/cancel", requireSchedulers, async (req, res) => {
   try {
     const target = await one(
       `select cycle_id as "cycleId", restaurant_id as "restaurantId", date::text as date,
-              shift_type as "shiftType", status, user_id as "userId",
+              shift_type as "shiftType", status, user_id as "userId", notify_pending as "notifyPending",
               to_char(start_time, 'HH24:MI') as "startTime", to_char(end_time, 'HH24:MI') as "endTime"
          from public.schedule_assignments where id = $1`,
       [req.params.id],
@@ -204,19 +174,19 @@ router.put("/:id/cancel", requireSchedulers, async (req, res) => {
     if (!(await canEditRestaurant(req.user, target.restaurantId))) {
       return res.status(403).json({ error: "forbidden_restaurant", message: "Você só pode editar a escala do seu cliente." });
     }
+    // A removal is only ANNOUNCED (notify_pending) when it undoes a change the
+    // freelancer was already told about — i.e. an already-notified published shift.
+    // Removing a shift the freelancer never heard about (a still-pending add, or a
+    // draft) clears the pending flag so the batched publish stays silent for them.
+    const announceRemoval = target.status === "published" && !target.notifyPending;
     const row = await one(
-      `update public.schedule_assignments set status = 'cancelled'
+      `update public.schedule_assignments set status = 'cancelled', notify_pending = $2
          where id = $1 returning ${COLS}`,
-      [req.params.id],
+      [req.params.id, announceRemoval],
     );
-    // Cancelling a PUBLISHED (freelancer-visible) shift: tell the affected
-    // freelancer, and open a vacancy → alert the waiting list (§3.4).
-    if (target.status === "published") {
-      await notifyScheduleChange({
-        userId: target.userId, type: "schedule_removed", restaurantId: target.restaurantId,
-        date: target.date, shiftType: target.shiftType,
-        startTime: target.startTime, endTime: target.endTime,
-      });
+    // Genuine removal of an announced shift: open a vacancy → alert the waiting list
+    // (§3.4). The affected freelancer is notified on the next publish, not now.
+    if (announceRemoval) {
       openVagaForSlot({
         cycleId: target.cycleId, restaurantId: target.restaurantId,
         date: target.date, shiftType: target.shiftType,
@@ -250,19 +220,21 @@ router.delete("/:id", requireSchedulers, async (req, res) => {
   }
 });
 
-// POST /api/assignments/publish { cycleId } — publish the cycle's draft escala (§3.1).
-// Draft assignments become 'published'; the cycle is marked published; every
-// affected freelancer is notified immediately (§11 "schedule_published").
+// POST /api/assignments/publish { cycleId } — publish/flush the cycle's escala (§3.1).
+// The button is ALWAYS available (client 2026-07-20): the first publish flips the
+// draft escala to published; a re-publish flushes the changes made since the last
+// publish. Either way it notifies ONLY the freelancers who actually changed — every
+// row carrying an un-sent change (notify_pending) — and never anyone unchanged.
 // Coordinators/administrators and restaurant_managers may publish.
 router.post("/publish", requireSchedulers, async (req, res) => {
   const cycleId = (req.body || {}).cycleId;
   if (!cycleId) return res.status(400).json({ error: "cycleId is required" });
 
-  const { rows: published } = await pool.query(
+  // Any draft rows (bulk auto-generate) become published and get queued for notify.
+  await pool.query(
     `update public.schedule_assignments
-       set status = 'published', published_at = now()
-     where cycle_id = $1 and status = 'draft'
-     returning user_id as "userId", date, shift_type as "shiftType"`,
+       set status = 'published', published_at = now(), notify_pending = true
+     where cycle_id = $1 and status = 'draft'`,
     [cycleId],
   );
 
@@ -271,23 +243,45 @@ router.post("/publish", requireSchedulers, async (req, res) => {
     [cycleId],
   );
 
-  const affected = [...new Set(published.map((r) => r.userId))];
-  for (const uid of affected) {
-    const count = published.filter((r) => r.userId === uid).length;
+  // Everyone with a pending change: additions (now published) and/or removals
+  // (cancelled + announceable). Unchanged freelancers have no pending rows → silent.
+  const { rows: changed } = await pool.query(
+    `select user_id as "userId",
+            count(*) filter (where status = 'published') as added,
+            count(*) filter (where status = 'cancelled') as removed
+       from public.schedule_assignments
+      where cycle_id = $1 and notify_pending = true
+      group by user_id`,
+    [cycleId],
+  );
+
+  for (const c of changed) {
+    const added = Number(c.added), removed = Number(c.removed);
+    let body;
+    if (added && removed) body = `Sua escala foi atualizada: ${added} novo(s) turno(s) e ${removed} removido(s).`;
+    else if (removed) body = `Sua escala foi atualizada: ${removed} turno(s) removido(s).`;
+    else body = `Sua escala foi publicada com ${added} turno(s).`;
     await notify({
-      recipientUserId: uid,
+      recipientUserId: c.userId,
       type: "schedule_published",
-      title: "Escala publicada",
-      body: `Sua escala foi publicada com ${count} turno(s).`,
-      data: { cycleId },
+      title: "Escala atualizada",
+      body,
+      data: { cycleId, path: "/my-schedule" },
     });
   }
+
+  // Clear the queue so a later re-publish only touches the NEXT round of changes.
+  await pool.query(
+    `update public.schedule_assignments set notify_pending = false
+      where cycle_id = $1 and notify_pending = true`,
+    [cycleId],
+  );
 
   // Publishing with gaps is allowed (§ trainees / not enough people yet). Any slot
   // still short of demand opens a vaga the waiting list can self-assume. Best-effort.
   openVagasForCycle(cycleId).catch((e) => console.error("open vagas on publish failed:", e.message));
 
-  res.json({ ok: true, publishedCount: published.length, notifiedUsers: affected.length });
+  res.json({ ok: true, notifiedUsers: changed.length });
 });
 
 export default router;

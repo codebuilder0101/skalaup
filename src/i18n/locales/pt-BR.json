@@ -1606,7 +1606,9 @@
       "submit": "Enviar avaliação",
       "invalid": "Link de avaliação inválido ou expirado.",
       "thanksTitle": "Obrigado!",
-      "thanksBody": "Sua avaliação foi registrada."
+      "thanksBody": "Sua avaliação foi registrada.",
+      "alreadyRatedTitle": "Você já avaliou hoje",
+      "alreadyRatedBody": "Este profissional já recebeu sua avaliação hoje. Obrigado!"
     },
     "vagas": {
       "title": "Vagas Abertas",
@@ -1977,7 +1979,7 @@
       "tempPasswordNotice": "Você está usando uma senha temporária. Defina uma nova.",
       "tempPasswordBanner": "Você está usando uma senha temporária — defina uma nova para proteger sua conta.",
       "changeNow": "Alterar agora",
-      "ficha": "Dados da equipe",
+      "ficha": "Meus dados",
       "phone": "Telefone",
       "transport": "Transporte",
       "selectTransport": "Selecione o transporte",

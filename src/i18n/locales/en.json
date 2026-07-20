@@ -1606,7 +1606,9 @@
       "submit": "Submit rating",
       "invalid": "Invalid or expired rating link.",
       "thanksTitle": "Thank you!",
-      "thanksBody": "Your rating has been recorded."
+      "thanksBody": "Your rating has been recorded.",
+      "alreadyRatedTitle": "You already rated today",
+      "alreadyRatedBody": "You have already rated this professional today. Thank you!"
     },
     "vagas": {
       "title": "Open Shifts",
@@ -1977,7 +1979,7 @@
       "tempPasswordNotice": "You're using a temporary password. Please set a new one.",
       "tempPasswordBanner": "You're using a temporary password — set a new one to secure your account.",
       "changeNow": "Change now",
-      "ficha": "Team member details",
+      "ficha": "My details",
       "phone": "Phone",
       "transport": "Transport",
       "selectTransport": "Select transport",

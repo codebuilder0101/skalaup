@@ -28,10 +28,13 @@ export default function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // First access: a freelancer who just self-registered lands on /profile to finish
+  // their cadastro (client 2026-07-20), instead of the usual role home.
+  const [postRegister, setPostRegister] = useState(false);
 
   if (isAuthenticated && user) {
     const from = (location.state as { from?: string } | null)?.from;
-    return <Navigate to={from || roleHomePath[user.role]} replace />;
+    return <Navigate to={postRegister ? "/profile" : (from || roleHomePath[user.role])} replace />;
   }
 
   const changeLanguage = (lng: SupportedLanguage) => {
@@ -74,8 +77,10 @@ export default function AuthPage() {
           setNotice(t("skala.auth.pendingNotice"));
           setMode("login");
           setName(""); setPassword("");
+        } else {
+          // Authorized freelancer → auto-logged-in; send them to /profile to finish cadastro.
+          setPostRegister(true);
         }
-        // Authorized freelancer → auto-logged-in; the redirect at the top handles it.
       } else {
         setError(roleError(res.error));
       }

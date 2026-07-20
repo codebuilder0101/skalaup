@@ -239,35 +239,6 @@ export default function ProfilePage() {
               </div>
             </Card>
 
-            {/* Security — change password */}
-            <Card className="p-5 space-y-4">
-              <h2 className="font-semibold text-foreground">{t("skala.profile.changePassword")}</h2>
-              {user?.mustChangePassword && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                  {t("skala.profile.tempPasswordNotice")}
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <Label>{t("skala.profile.currentPassword")}</Label>
-                <Input type="password" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>{t("skala.profile.newPassword")}</Label>
-                  <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("skala.profile.confirmPassword")}</Label>
-                  <Input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button variant="outline" onClick={() => void changePassword()} disabled={changingPwd}>
-                  {t("skala.profile.changePassword")}
-                </Button>
-              </div>
-            </Card>
-
             {/* Freelancer ficha */}
             {isFreelancer && (
               <Card className="p-5 space-y-4">
@@ -332,6 +303,35 @@ export default function ProfilePage() {
                 {saving ? t("skala.common.saving") : t("skala.common.save")}
               </Button>
             </div>
+
+            {/* Security — change password (last, per client 2026-07-20). */}
+            <Card className="p-5 space-y-4">
+              <h2 className="font-semibold text-foreground">{t("skala.profile.changePassword")}</h2>
+              {user?.mustChangePassword && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                  {t("skala.profile.tempPasswordNotice")}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label>{t("skala.profile.currentPassword")}</Label>
+                <Input type="password" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>{t("skala.profile.newPassword")}</Label>
+                  <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("skala.profile.confirmPassword")}</Label>
+                  <Input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => void changePassword()} disabled={changingPwd}>
+                  {t("skala.profile.changePassword")}
+                </Button>
+              </div>
+            </Card>
           </>
         )}
       </div>

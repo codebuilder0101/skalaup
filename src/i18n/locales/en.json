@@ -1822,6 +1822,8 @@
       "assigned": "Team member assigned.",
       "remove": "Remove",
       "removed": "Assignment removed.",
+      "removeConfirm": "Remove and notify?",
+      "removedNotified": "Removed. The person was notified and the slot reopened.",
       "conflict": "conflict",
       "conflictHint": "Already assigned to another client in this shift.",
       "registeredHere": "registered here",

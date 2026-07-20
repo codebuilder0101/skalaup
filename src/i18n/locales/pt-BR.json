@@ -1822,6 +1822,8 @@
       "assigned": "Membro da equipe escalado.",
       "remove": "Remover",
       "removed": "Escalação removida.",
+      "removeConfirm": "Remover e avisar?",
+      "removedNotified": "Removido. A pessoa foi avisada e a vaga reaberta.",
       "conflict": "conflito",
       "conflictHint": "Já escalado em outro cliente neste turno.",
       "registeredHere": "registrado aqui",

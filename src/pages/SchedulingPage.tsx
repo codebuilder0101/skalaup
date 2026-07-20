@@ -106,6 +106,8 @@ function ScheduleCell({
   const [candidates, setCandidates] = useState<SlotCandidate[]>([]);
   const [loadingCand, setLoadingCand] = useState(false);
   const [working, setWorking] = useState(false);
+  // Which assigned row is pending a "remove & notify" confirmation (published only).
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [slotIdx, setSlotIdx] = useState(0);
   // All active members are shown by default so every registered freelancer is
   // assignable, not only those who declared availability (§3.3). The list can be
@@ -124,16 +126,16 @@ function ScheduleCell({
   // No capacity cap (§3.5): the cell shows only how many are scheduled; a deficit
   // vs the restaurant's demand is signalled in red.
   const hasDeficit = cell.deficit > 0;
-  // After the escala is published the grid is READ-ONLY, with two deliberate
-  // exceptions the client asked for:
-  //  • canOpen — any non-empty published cell can still be OPENED to *view* who was
-  //    scheduled (coordinators always need access to published escalas); and
-  //  • canAssign — cells still short of demand can be FILLED (the backend attributes
-  //    these post-publish adds as waiting_list pulls).
-  // canRemove stays draft-only, so a published shift can never be silently dropped.
-  const canOpen = canEdit || (published && !emptyNoDemand);
-  const canAssign = canEdit || (canFill && hasDeficit);
-  const canRemove = canEdit;
+  // Editable rows (own restaurant) stay FULLY editable even after publish — the
+  // client needs to remove/substitute people on an announced escala. The backend
+  // notifies anyone dropped from a published shift and reopens the vaga to the
+  // waiting list, so a published removal is confirmed in the UI before it fires.
+  // Non-editable rows are read-only, but a published escala can still be OPENED to
+  // view who was scheduled.
+  const mayEdit = canEdit || canFill;
+  const canOpen = mayEdit || (published && !emptyNoDemand);
+  const canAssign = mayEdit;
+  const canRemove = mayEdit;
 
   const loadCandidates = useCallback(async () => {
     if (!cycleId) { setCandidates([]); return; }
@@ -157,6 +159,7 @@ function ScheduleCell({
   }, [cell.date, cell.assigned, shiftType, restaurantId]);
 
   useEffect(() => {
+    setConfirmRemoveId(null);
     if (open) { setSlotIdx(0); setShowAll(true); void loadCandidates(); void loadAllMembers(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -243,6 +246,8 @@ function ScheduleCell({
     const { error } = await cancelAssignment(assignmentId);
     setWorking(false);
     if (error) { toast.error(error.message); return; }
+    setConfirmRemoveId(null);
+    if (published) toast.success(t("skala.scheduleBuilder.removedNotified"));
     await onChanged();
     void loadCandidates();
     if (showAll) void loadAllMembers();
@@ -377,10 +382,26 @@ function ScheduleCell({
                 <span className="text-[10px] text-muted-foreground">{Number(a.score).toFixed(1)}</span>
               </span>
               {canRemove && (
-                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0"
-                  onClick={() => void remove(a.assignmentId)} disabled={working}>
-                  <X className="w-3.5 h-3.5" />
-                </Button>
+                confirmRemoveId === a.assignmentId ? (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[10px] text-muted-foreground">{t("skala.scheduleBuilder.removeConfirm")}</span>
+                    <Button size="sm" variant="destructive" className="h-6 px-2 text-[11px]"
+                      onClick={() => void remove(a.assignmentId)} disabled={working}>
+                      {t("skala.scheduleBuilder.remove")}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]"
+                      onClick={() => setConfirmRemoveId(null)} disabled={working}>
+                      {t("skala.common.cancel")}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0"
+                    onClick={() => { if (published) setConfirmRemoveId(a.assignmentId); else void remove(a.assignmentId); }}
+                    disabled={working}
+                    title={published ? t("skala.scheduleBuilder.removeConfirm") : undefined}>
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                )
               )}
             </div>
           ))}

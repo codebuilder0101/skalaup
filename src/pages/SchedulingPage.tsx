@@ -83,7 +83,7 @@ function Stars({ level }: { level: number | null }) {
 
 // ---- One grid cell (restaurant × shift × day) with assign popover ----------
 function ScheduleCell({
-  cell, restaurantId, shiftType, startTime, endTime, slots, cycleId, isToday, busyUserIds, canEdit, onChanged,
+  cell, restaurantId, shiftType, startTime, endTime, slots, cycleId, isToday, busyUserIds, canEdit, canFill, published, onChanged,
   variant = "grid",
 }: {
   cell: WeekCell;
@@ -96,6 +96,8 @@ function ScheduleCell({
   isToday: boolean;
   busyUserIds: Set<string>;
   canEdit: boolean;
+  canFill: boolean;
+  published: boolean;
   onChanged: () => Promise<void>;
   variant?: "grid" | "detail";
 }) {
@@ -122,6 +124,16 @@ function ScheduleCell({
   // No capacity cap (§3.5): the cell shows only how many are scheduled; a deficit
   // vs the restaurant's demand is signalled in red.
   const hasDeficit = cell.deficit > 0;
+  // After the escala is published the grid is READ-ONLY, with two deliberate
+  // exceptions the client asked for:
+  //  • canOpen — any non-empty published cell can still be OPENED to *view* who was
+  //    scheduled (coordinators always need access to published escalas); and
+  //  • canAssign — cells still short of demand can be FILLED (the backend attributes
+  //    these post-publish adds as waiting_list pulls).
+  // canRemove stays draft-only, so a published shift can never be silently dropped.
+  const canOpen = canEdit || (published && !emptyNoDemand);
+  const canAssign = canEdit || (canFill && hasDeficit);
+  const canRemove = canEdit;
 
   const loadCandidates = useCallback(async () => {
     if (!cycleId) { setCandidates([]); return; }
@@ -210,7 +222,7 @@ function ScheduleCell({
   };
 
   const assign = async (userId: string) => {
-    if (!canEdit) return;
+    if (!canAssign) return;
     setWorking(true);
     const res = await createAssignment({
       cycleId, restaurantId, userId, date: cell.date, shiftType,
@@ -239,9 +251,9 @@ function ScheduleCell({
   const gridTrigger = (
     <button
       type="button"
-      disabled={!canEdit}
+      disabled={!canOpen}
       className={`text-left w-full h-full min-h-[64px] p-1.5 border-l border-t border-border/60 transition-colors
-        ${isToday ? "bg-primary/5" : ""} ${canEdit ? "hover:bg-accent/40 cursor-pointer" : "cursor-default"}`}
+        ${isToday ? "bg-primary/5" : ""} ${canOpen ? "hover:bg-accent/40 cursor-pointer" : "cursor-default"}`}
     >
       <div className="flex items-center justify-between mb-1">
         {emptyNoDemand ? (
@@ -277,9 +289,9 @@ function ScheduleCell({
   const detailTrigger = (
     <button
       type="button"
-      disabled={!canEdit}
+      disabled={!canOpen}
       className={`text-left w-full rounded-lg border border-border/60 p-2.5 transition-colors
-        ${canEdit ? "hover:bg-accent/40 active:bg-accent/60 cursor-pointer" : "cursor-default"}`}
+        ${canOpen ? "hover:bg-accent/40 active:bg-accent/60 cursor-pointer" : "cursor-default"}`}
     >
       <div className="flex items-center gap-2">
         {emptyNoDemand ? (
@@ -293,7 +305,7 @@ function ScheduleCell({
           </Badge>
         )}
         {cell.isWeekendMandatory && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />}
-        {canEdit && (
+        {canAssign && (
           <span className="ml-auto inline-flex items-center gap-1 text-xs text-primary">
             <Plus className="w-3.5 h-3.5" />{t("skala.scheduleBuilder.assign")}
           </span>
@@ -364,16 +376,25 @@ function ScheduleCell({
                 {a.name} <Stars level={a.level} />
                 <span className="text-[10px] text-muted-foreground">{Number(a.score).toFixed(1)}</span>
               </span>
-              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0"
-                onClick={() => void remove(a.assignmentId)} disabled={working}>
-                <X className="w-3.5 h-3.5" />
-              </Button>
+              {canRemove && (
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0"
+                  onClick={() => void remove(a.assignmentId)} disabled={working}>
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Candidates */}
+      {/* View-only (published, nothing to fill): a clear empty state so "ver quem
+          foi escalado" never lands on a blank panel when nobody is scheduled yet. */}
+      {!canAssign && cell.assigned.length === 0 && (
+        <div className="p-3 text-sm text-muted-foreground">{t("skala.scheduleBuilder.noneAssigned")}</div>
+      )}
+
+      {/* Candidates — only when the coordinator can actually add someone. */}
+      {canAssign && (
       <div className={`p-3 space-y-1 overflow-y-auto ${variant === "detail" ? "" : "max-h-64"}`}>
         <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
           {t("skala.scheduleBuilder.waitingList")} ({candidates.length})
@@ -390,7 +411,7 @@ function ScheduleCell({
 
         {/* Full roster (§3.3): every other registered member, shown by default so
             anyone can be staffed — collapsible to just the availability list. */}
-        {canEdit && (
+        {canAssign && (
           <div className="pt-2 mt-1 border-t border-border">
             <button type="button" onClick={() => void toggleShowAll()}
               className="text-xs text-primary hover:underline">
@@ -413,6 +434,7 @@ function ScheduleCell({
           </div>
         )}
       </div>
+      )}
     </>
   );
 
@@ -420,7 +442,7 @@ function ScheduleCell({
   // Schedule" must not break on small screens). Desktop grid keeps the popover.
   if (variant === "detail") {
     return (
-      <Sheet open={open} onOpenChange={canEdit ? setOpen : undefined}>
+      <Sheet open={open} onOpenChange={(o) => setOpen(o ? canOpen : false)}>
         <SheetTrigger asChild>{detailTrigger}</SheetTrigger>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto p-0 rounded-t-2xl">
           <SheetHeader className="sr-only">
@@ -433,7 +455,7 @@ function ScheduleCell({
   }
 
   return (
-    <Popover open={open} onOpenChange={canEdit ? setOpen : undefined}>
+    <Popover open={open} onOpenChange={(o) => setOpen(o ? canOpen : false)}>
       <PopoverTrigger asChild>{gridTrigger}</PopoverTrigger>
       <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] p-0" align="start">
         {panelBody}
@@ -924,6 +946,8 @@ export default function SchedulingPage() {
                     {s.rows.map(({ row, cell }) => {
                       const mayEditRow = scope.canEditAll || scope.ids.has(row.restaurantId);
                       const rowCanEdit = canEdit && mayEditRow;
+                      // Published escala: still let editable rows fill their pending slots.
+                      const rowCanFill = published && mayEditRow;
                       const readOnlyForManager = canEdit && !mayEditRow;
                       return (
                         <div key={row.restaurantId} className="space-y-1">
@@ -947,6 +971,8 @@ export default function SchedulingPage() {
                             isToday={cell.date === today}
                             busyUserIds={busyByDateShift.get(`${cell.date}|${s.shiftType}`) ?? new Set()}
                             canEdit={rowCanEdit}
+                            canFill={rowCanFill}
+                            published={published}
                             onChanged={loadBoard}
                           />
                         </div>
@@ -999,6 +1025,8 @@ export default function SchedulingPage() {
                     // Managers can view every restaurant but only edit their own.
                     const mayEditRow = scope.canEditAll || scope.ids.has(row.restaurantId);
                     const rowCanEdit = canEdit && mayEditRow;
+                    // Published escala: still let editable rows fill their pending slots.
+                    const rowCanFill = published && mayEditRow;
                     const readOnlyForManager = canEdit && !mayEditRow;
                     return (
                       <div key={row.restaurantId} className="grid border-b border-border" style={gridCols}>
@@ -1023,6 +1051,8 @@ export default function SchedulingPage() {
                             isToday={cell.date === today}
                             busyUserIds={busyByDateShift.get(`${cell.date}|${sg.shiftType}`) ?? new Set()}
                             canEdit={rowCanEdit}
+                            canFill={rowCanFill}
+                            published={published}
                             onChanged={loadBoard}
                           />
                         ))}

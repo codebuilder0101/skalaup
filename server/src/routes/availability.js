@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { pool, one } from "../db.js";
 import { requireAuth, requireRole } from "../auth.js";
-import { notify, coordinatorIds } from "../notify.js";
+import { notify, notifyMany, coordinatorIds } from "../notify.js";
 import { runCycleMaintenance, notifyCycleDeficits } from "../scheduler.js";
 
 // Availability cycles + submissions (§2.1, §2.2, §3.1, §3.2).
@@ -450,6 +450,7 @@ router.put("/submissions/bulk", async (req, res) => {
     }
   }
 
+  const removed = []; // previously-submitted slots this edit cancels (for the alert below)
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -461,13 +462,16 @@ router.put("/submissions/bulk", async (req, res) => {
     );
     const curByKey = new Map(cur.map((r) => [keyOf(r), r]));
 
-    // Cancel submitted slots no longer desired.
+    // Cancel submitted slots no longer desired — collect them so coordination can be
+    // alerted (client 2026-07-21: a freelancer who removes an already-submitted day
+    // during the open window changes the availability counts the coordinator relies on).
     for (const [k, row] of curByKey) {
       if (!desired.has(k)) {
         await client.query(
           `update public.availability_submissions set status='cancelled', cancelled_at=now() where id=$1`,
           [row.id],
         );
+        removed.push({ date: row.date, shiftType: row.shiftType, restaurantId: row.restaurantId });
       }
     }
     // Submit (or re-activate) desired slots not already submitted.
@@ -502,6 +506,36 @@ router.put("/submissions/bulk", async (req, res) => {
 
   await syncFlexibleScore(targetUser, b.cycleId);
   await syncWeekendTargetScore(targetUser, b.cycleId);
+
+  // Alert coordination when a freelancer removed days they had already submitted, so a
+  // drop in availability (e.g. many people pulling out of Father's Day) never goes
+  // unnoticed. One summary notification per edit; only for the freelancer's own edits.
+  if (removed.length && isSelf) {
+    try {
+      const me = await one(`select name from public.users where id = $1`, [targetUser]);
+      const restIds = [...new Set(removed.map((r) => r.restaurantId).filter(Boolean))];
+      const restMap = new Map();
+      if (restIds.length) {
+        const { rows: rr } = await pool.query(
+          `select id, name from public.restaurants where id = any($1::uuid[])`, [restIds],
+        );
+        rr.forEach((r) => restMap.set(r.id, r.name));
+      }
+      const label = (r) =>
+        `${r.date.slice(8, 10)}/${r.date.slice(5, 7)} ${r.shiftType === "lunch" ? "almoço" : "janta"}` +
+        (r.restaurantId && restMap.get(r.restaurantId) ? ` (${restMap.get(r.restaurantId)})` : "");
+      const list = removed.map(label).join(", ");
+      await notifyMany(await coordinatorIds(), () => ({
+        type: "availability_cancelled",
+        title: "Disponibilidade alterada",
+        body: `${me?.name ?? "Um freelancer"} retirou da disponibilidade: ${list}`,
+        data: { path: "/availability", userId: targetUser, cycleId: b.cycleId, removed: removed.length },
+      }));
+    } catch (e) {
+      console.error("availability removal notify error:", e.message);
+    }
+  }
+
   const { rows } = await pool.query(
     `select ${SUB_COLS} from public.availability_submissions
       where cycle_id = $1 and user_id = $2 and status = 'submitted' order by date asc, shift_type asc`,

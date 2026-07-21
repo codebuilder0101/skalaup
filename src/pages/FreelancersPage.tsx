@@ -76,7 +76,12 @@ export default function FreelancersPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<AuthorizedRole>("freelancer");
   const [newRestaurantIds, setNewRestaurantIds] = useState<string[]>([]);
-  const [grantable, setGrantable] = useState<AuthorizedRole[]>([]);
+  // Only administrators reach this dialog, and an administrator may grant every role.
+  // So the picker is seeded with the full set up front; the /roles fetch merely refines
+  // it. Never gate the Add button on that fetch — if it hiccups (e.g. a request that
+  // races a deploy), the button must still work, and the server enforces the real policy.
+  const ADMIN_GRANTABLE: AuthorizedRole[] = ["coordinator", "restaurant_manager", "freelancer", "visitor"];
+  const [grantable, setGrantable] = useState<AuthorizedRole[]>(ADMIN_GRANTABLE);
   const [emailBusy, setEmailBusy] = useState(false);
 
   // A coordinator sees every restaurant, so links are meaningless for that role.
@@ -92,9 +97,11 @@ export default function FreelancersPage() {
     const [list, roles] = await Promise.all([listAuthorizedEmails(), listGrantableRoles()]);
     if (list.error) { toast.error(list.error.message); return; }
     setAuthEmails(list.data);
-    setGrantable(roles.data);
-    // Default to the least-privileged role this user may hand out.
-    if (roles.data.length && !roles.data.includes("freelancer")) setNewRole(roles.data[0]);
+    // Refine the picker only if the fetch succeeded; otherwise keep the full default.
+    if (roles.data.length) {
+      setGrantable(roles.data);
+      if (!roles.data.includes("freelancer")) setNewRole(roles.data[0]);
+    }
   }, []);
 
   const openEmails = () => {
@@ -515,7 +522,7 @@ export default function FreelancersPage() {
             <Button
               className="w-full"
               onClick={() => void addEmail()}
-              disabled={emailBusy || !newEmail.trim() || grantable.length === 0}
+              disabled={emailBusy || !newEmail.trim()}
             >
               <Plus className="w-4 h-4 mr-1.5" />{t("skala.freelancers.authEmails.add")}
             </Button>

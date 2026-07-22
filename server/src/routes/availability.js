@@ -310,29 +310,14 @@ router.post("/submissions", async (req, res) => {
   // coordinator has individually reopened (§3.1 "pode reabrir para um restaurante
   // ou para algum freelancer").
   if (!isOps) {
-    // Gate participation (§3): a specific-restaurant offer requires a link to that
-    // client; an "any" offer just requires being linked to at least one client.
+    // No client-link requirement (client 2026-07-22): a freelancer may offer any active
+    // restaurant. A specific-restaurant offer must simply point to an active restaurant.
     if (restaurantId) {
-      const linked = await one(
-        `select 1 from public.member_clients where member_user_id = $1 and restaurant_id = $2`,
-        [targetUser, restaurantId],
+      const active = await one(
+        `select 1 from public.restaurants where id = $1 and active = true`, [restaurantId],
       );
-      if (!linked) {
-        return res.status(403).json({
-          error: "not_linked_client",
-          message: "Você não está vinculado a este cliente. Fale com a coordenadora.",
-        });
-      }
-    } else {
-      const anyLink = await one(
-        `select 1 from public.member_clients where member_user_id = $1 limit 1`,
-        [targetUser],
-      );
-      if (!anyLink) {
-        return res.status(403).json({
-          error: "not_linked_client",
-          message: "Você ainda não está vinculado a nenhum cliente. Fale com a coordenadora.",
-        });
+      if (!active) {
+        return res.status(400).json({ error: "invalid_restaurant", message: "Restaurante inválido ou inativo." });
       }
     }
     const cyc = await one(`select status from public.availability_cycles where id = $1`, [b.cycleId]);
@@ -429,23 +414,18 @@ router.put("/submissions/bulk", async (req, res) => {
         });
       }
     }
-    // Client-link gate: "any" needs ≥1 link; a specific restaurant needs its link.
-    const { rows: links } = await pool.query(
-      `select restaurant_id from public.member_clients where member_user_id = $1`, [targetUser],
-    );
-    const linked = new Set(links.map((r) => r.restaurant_id));
-    if (desired.size > 0 && linked.size === 0) {
-      return res.status(403).json({
-        error: "not_linked_client",
-        message: "Você ainda não está vinculado a nenhum cliente. Fale com a coordenadora.",
-      });
-    }
-    for (const s of desired.values()) {
-      if (s.restaurantId && !linked.has(s.restaurantId)) {
-        return res.status(403).json({
-          error: "not_linked_client",
-          message: "Você não está vinculado a um dos clientes selecionados.",
-        });
+    // No client-link requirement (client 2026-07-22): a freelancer may offer any active
+    // restaurant. Only validate that specific choices point to active restaurants.
+    const restIds = [...new Set([...desired.values()].map((s) => s.restaurantId).filter(Boolean))];
+    if (restIds.length) {
+      const { rows: act } = await pool.query(
+        `select id from public.restaurants where id = any($1::uuid[]) and active = true`, [restIds],
+      );
+      const activeSet = new Set(act.map((r) => r.id));
+      for (const id of restIds) {
+        if (!activeSet.has(id)) {
+          return res.status(400).json({ error: "invalid_restaurant", message: "Um dos restaurantes selecionados é inválido ou inativo." });
+        }
       }
     }
   }
@@ -583,19 +563,15 @@ router.delete("/submissions/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /api/availability/my-clients — restaurants the current freelancer may offer
-// availability for (their linked clients). Ops/managers see all active restaurants.
-router.get("/my-clients", async (req, res) => {
+// GET /api/availability/my-clients — the active restaurants a freelancer may offer
+// availability for. Since 2026-07-22 that is every active restaurant (no link needed).
+router.get("/my-clients", async (_req, res) => {
   try {
-    const isOps = req.user.role === "coordinator" || req.user.role === "administrator";
-    const { rows } = isOps
-      ? await pool.query(`select id, name from public.restaurants where active = true order by name`)
-      : await pool.query(
-          `select r.id, r.name from public.member_clients mc
-             join public.restaurants r on r.id = mc.restaurant_id
-            where mc.member_user_id = $1 and r.active = true order by r.name`,
-          [req.user.sub],
-        );
+    // Client 2026-07-22: a freelancer may offer availability for ANY active restaurant
+    // (no client link required) and picks it right here on the availability screen.
+    const { rows } = await pool.query(
+      `select id, name from public.restaurants where active = true order by name`,
+    );
     res.json(rows);
   } catch (e) {
     console.error("my-clients error:", e.message);

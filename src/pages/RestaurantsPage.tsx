@@ -23,7 +23,8 @@ import type { Restaurant, ShiftTemplate, NoShowDiscountMode } from "@/lib/skalau
 import { listFreelancers, type FreelancerWithProfile } from "@/lib/skalaup/freelancers";
 import { maskCep, maskCnpj, isValidCep, isValidCnpj } from "@/lib/br-format";
 
-type SlotRow = { label: string; startTime: string; endTime: string };
+// A shift ("turno"): free name + time window + its OWN pay (client 2026-07-22).
+type SlotRow = { label: string; startTime: string; endTime: string; basePay: string; bonusPay: string };
 type WeekendBonusChoice = "inherit" | "on" | "off";
 
 type FormState = {
@@ -36,14 +37,9 @@ type FormState = {
   latitude: string;
   longitude: string;
   active: boolean;
-  // shift times (HH:MM) — each meal period can hold multiple staggered slots
+  // shifts (HH:MM) — each meal period can hold multiple named shifts, each with its pay
   lunchSlots: SlotRow[];
   dinnerSlots: SlotRow[];
-  // pay per shift type — empty string = inherit the global default (stored as NULL)
-  lunchBasePay: string;
-  lunchBonusPay: string;
-  dinnerBasePay: string;
-  dinnerBonusPay: string;
   // discounts / bonus
   lateDiscountAmount: string;
   noShowDiscountMode: string; // "" = inherit
@@ -57,13 +53,12 @@ const emptyForm: FormState = {
   name: "", address: "", cep: "", cnpj: "", latitude: "", longitude: "", active: true,
   lunchSlots: [],
   dinnerSlots: [],
-  lunchBasePay: "", lunchBonusPay: "", dinnerBasePay: "", dinnerBonusPay: "",
   lateDiscountAmount: "", noShowDiscountMode: "", noShowCustomAmount: "",
   weekendBonus: "inherit",
   memberUserIds: [],
 };
 
-const emptySlot = (): SlotRow => ({ label: "", startTime: "", endTime: "" });
+const emptySlot = (): SlotRow => ({ label: "", startTime: "", endTime: "", basePay: "", bonusPay: "" });
 const toStr = (v: string | number | null | undefined) => (v == null ? "" : String(v));
 const toNum = (s: string) => (s.trim() === "" ? null : Number(s));
 
@@ -139,17 +134,16 @@ export default function RestaurantsPage() {
     const toSlots = (type: "lunch" | "dinner"): SlotRow[] =>
       (r.shiftTemplates ?? [])
         .filter((s) => s.shiftType === type)
-        .map((s) => ({ label: s.label ?? "", startTime: s.startTime, endTime: s.endTime }));
+        .map((s) => ({
+          label: s.label ?? "", startTime: s.startTime, endTime: s.endTime,
+          basePay: toStr(s.basePay), bonusPay: toStr(s.bonusPay),
+        }));
     setForm({
       id: r.id, name: r.name, address: r.address ?? "", cep: r.cep ?? "", cnpj: r.cnpj ?? "",
       latitude: toStr(r.latitude), longitude: toStr(r.longitude),
       active: r.active,
       lunchSlots: toSlots("lunch"),
       dinnerSlots: toSlots("dinner"),
-      lunchBasePay: toStr(r.basePayLunch),
-      lunchBonusPay: toStr(r.bonusPayLunch),
-      dinnerBasePay: toStr(r.basePayDinner),
-      dinnerBonusPay: toStr(r.bonusPayDinner),
       lateDiscountAmount: toStr(r.lateDiscountAmount),
       noShowDiscountMode: r.noShowDiscountMode ?? "",
       noShowCustomAmount: toStr(r.noShowCustomAmount),
@@ -178,9 +172,10 @@ export default function RestaurantsPage() {
       if (hasDuplicate(list)) { toast.error(t("skala.restaurants.errDuplicate")); return; }
     }
 
-    // Amounts ≥ 0
+    // Amounts ≥ 0 — the per-shift pay plus the discount amount.
     const amounts = [
-      form.lunchBasePay, form.lunchBonusPay, form.dinnerBasePay, form.dinnerBonusPay,
+      ...form.lunchSlots.flatMap((s) => [s.basePay, s.bonusPay]),
+      ...form.dinnerSlots.flatMap((s) => [s.basePay, s.bonusPay]),
       form.lateDiscountAmount, form.noShowCustomAmount,
     ];
     for (const a of amounts) {
@@ -206,7 +201,10 @@ export default function RestaurantsPage() {
     for (const { type, list } of periods) {
       for (const s of list) {
         if (s.startTime && s.endTime) {
-          shiftTemplates.push({ shiftType: type, label: s.label.trim() || null, startTime: s.startTime, endTime: s.endTime });
+          shiftTemplates.push({
+            shiftType: type, label: s.label.trim() || null, startTime: s.startTime, endTime: s.endTime,
+            basePay: toNum(s.basePay), bonusPay: toNum(s.bonusPay),
+          });
         }
       }
     }
@@ -219,10 +217,6 @@ export default function RestaurantsPage() {
       latitude: toNum(form.latitude),
       longitude: toNum(form.longitude),
       active: form.active,
-      basePayLunch: toNum(form.lunchBasePay),
-      bonusPayLunch: toNum(form.lunchBonusPay),
-      basePayDinner: toNum(form.dinnerBasePay),
-      bonusPayDinner: toNum(form.dinnerBonusPay),
       lateDiscountAmount: toNum(form.lateDiscountAmount),
       noShowDiscountMode: (form.noShowDiscountMode || null) as NoShowDiscountMode | null,
       noShowCustomAmount: toNum(form.noShowCustomAmount),
@@ -374,10 +368,11 @@ export default function RestaurantsPage() {
             {/* --- Shift times (multiple staggered slots per meal period) --- */}
             <div className="space-y-4 pt-3 border-t">
               <h4 className="text-sm font-semibold text-foreground">{t("skala.restaurants.sectionShifts")}</h4>
+              <p className="text-xs text-muted-foreground">{t("skala.restaurants.shiftsPayHint")}</p>
               {([
-                { key: "lunchSlots" as const, label: t("skala.restaurants.shiftLunch"), add: t("skala.restaurants.addLunchTime"), baseKey: "lunchBasePay" as const, bonusKey: "lunchBonusPay" as const },
-                { key: "dinnerSlots" as const, label: t("skala.restaurants.shiftDinner"), add: t("skala.restaurants.addDinnerTime"), baseKey: "dinnerBasePay" as const, bonusKey: "dinnerBonusPay" as const },
-              ]).map(({ key, label, add, baseKey, bonusKey }) => {
+                { key: "lunchSlots" as const, label: t("skala.restaurants.shiftLunch"), add: t("skala.restaurants.addLunchTime") },
+                { key: "dinnerSlots" as const, label: t("skala.restaurants.shiftDinner"), add: t("skala.restaurants.addDinnerTime") },
+              ]).map(({ key, label, add }) => {
                 const list = form[key];
                 const update = (idx: number, patch: Partial<SlotRow>) =>
                   setForm({ ...form, [key]: list.map((s, i) => (i === idx ? { ...s, ...patch } : s)) });
@@ -390,57 +385,54 @@ export default function RestaurantsPage() {
                       <p className="text-xs text-muted-foreground">{t("skala.restaurants.noSlots")}</p>
                     )}
                     {list.map((s, idx) => (
-                      <div key={idx} className="flex flex-wrap items-center gap-2">
-                        <Input
-                          type="time" className="flex-1 min-w-[110px]"
-                          value={s.startTime}
-                          onChange={(e) => update(idx, { startTime: e.target.value })}
-                        />
-                        <span className="text-muted-foreground text-xs">–</span>
-                        <Input
-                          type="time" className="flex-1 min-w-[110px]"
-                          value={s.endTime}
-                          onChange={(e) => update(idx, { endTime: e.target.value })}
-                        />
-                        <Input
-                          className="w-full sm:w-28"
-                          placeholder={t("skala.restaurants.slotLabelPlaceholder")}
-                          value={s.label}
-                          onChange={(e) => update(idx, { label: e.target.value })}
-                        />
-                        <Button
-                          type="button" size="icon" variant="ghost"
-                          className="text-destructive flex-shrink-0"
-                          onClick={() => removeRow(idx)}
-                          aria-label={t("skala.common.delete")}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                      <div key={idx} className="rounded-lg border border-border/60 p-2.5 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input
+                            className="flex-1 min-w-[120px]"
+                            placeholder={t("skala.restaurants.slotLabelPlaceholder")}
+                            value={s.label}
+                            onChange={(e) => update(idx, { label: e.target.value })}
+                          />
+                          <Button
+                            type="button" size="icon" variant="ghost"
+                            className="text-destructive flex-shrink-0"
+                            onClick={() => removeRow(idx)}
+                            aria-label={t("skala.common.delete")}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">{t("skala.restaurants.slotStart")}</Label>
+                            <Input type="time" value={s.startTime} onChange={(e) => update(idx, { startTime: e.target.value })} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">{t("skala.restaurants.slotEnd")}</Label>
+                            <Input type="time" value={s.endTime} onChange={(e) => update(idx, { endTime: e.target.value })} />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">{t("skala.restaurants.basePay")}</Label>
+                            <Input
+                              type="number" min="0" step="0.01" inputMode="decimal"
+                              placeholder={t("skala.restaurants.inheritGlobal")}
+                              value={s.basePay} onChange={(e) => update(idx, { basePay: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">{t("skala.restaurants.bonusPay")}</Label>
+                            <Input
+                              type="number" min="0" step="0.01" inputMode="decimal"
+                              placeholder={t("skala.restaurants.inheritGlobal")}
+                              value={s.bonusPay} onChange={(e) => update(idx, { bonusPay: e.target.value })}
+                            />
+                          </div>
+                        </div>
                       </div>
                     ))}
                     <Button type="button" size="sm" variant="outline" onClick={addRow}>
                       <Plus className="w-3.5 h-3.5 mr-1" />{add}
                     </Button>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">{t("skala.restaurants.basePay")}</Label>
-                        <Input
-                          type="number" min="0" step="0.01" inputMode="decimal"
-                          placeholder={t("skala.restaurants.inheritGlobal")}
-                          value={form[baseKey]}
-                          onChange={(e) => setForm({ ...form, [baseKey]: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">{t("skala.restaurants.bonusPay")}</Label>
-                        <Input
-                          type="number" min="0" step="0.01" inputMode="decimal"
-                          placeholder={t("skala.restaurants.inheritGlobal")}
-                          value={form[bonusKey]}
-                          onChange={(e) => setForm({ ...form, [bonusKey]: e.target.value })}
-                        />
-                      </div>
-                    </div>
                   </div>
                 );
               })}

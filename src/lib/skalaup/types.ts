@@ -107,6 +107,9 @@ export interface ShiftTemplate {
   label?: string | null;
   startTime: string;
   endTime: string;
+  // Per-shift pay (client 2026-07-22); null/undefined = inherit restaurant/global.
+  basePay?: number | null;
+  bonusPay?: number | null;
 }
 
 export interface RestaurantRow {

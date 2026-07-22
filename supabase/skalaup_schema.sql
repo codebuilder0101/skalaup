@@ -958,6 +958,13 @@ create index if not exists idx_public_ratings_status on public.public_ratings(st
 -- points may be negative (bad review subtracts). Editable in Settings.
 alter table public.app_settings add column if not exists rating_types jsonb not null default '[]'::jsonb;
 
+-- Per-shift (per-slot) pay (client 2026-07-22): each named shift a restaurant defines
+-- carries its OWN base + bonus value, so a "turno 1" and a "turno 2" can pay differently.
+-- Nullable = inherit the restaurant general / global default. Payroll matches a worked
+-- assignment to its template by (restaurant, shift_type, start, end) and pays this value.
+alter table public.shift_templates add column if not exists base_pay  numeric(10,2);
+alter table public.shift_templates add column if not exists bonus_pay numeric(10,2);
+
 -- E3 — an extra shift opened as a vaga links back to its request, so that when a
 -- freelancer actually claims the vaga we can confirm to the requesting manager.
 alter table public.demand_overrides

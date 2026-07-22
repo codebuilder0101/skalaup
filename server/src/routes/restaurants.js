@@ -29,7 +29,8 @@ async function templatesFor(q, restaurantIds) {
   const { rows } = await q.query(
     `select restaurant_id as "restaurantId", shift_type as "shiftType", label,
        to_char(start_time, 'HH24:MI') as "startTime",
-       to_char(end_time, 'HH24:MI') as "endTime"
+       to_char(end_time, 'HH24:MI') as "endTime",
+       base_pay as "basePay", bonus_pay as "bonusPay"
      from public.shift_templates
      where restaurant_id = any($1::uuid[])
      order by shift_type asc, start_time asc`,
@@ -37,7 +38,11 @@ async function templatesFor(q, restaurantIds) {
   );
   const map = {};
   for (const r of rows) {
-    (map[r.restaurantId] ||= []).push({ shiftType: r.shiftType, label: r.label, startTime: r.startTime, endTime: r.endTime });
+    (map[r.restaurantId] ||= []).push({
+      shiftType: r.shiftType, label: r.label, startTime: r.startTime, endTime: r.endTime,
+      basePay: r.basePay == null ? null : Number(r.basePay),
+      bonusPay: r.bonusPay == null ? null : Number(r.bonusPay),
+    });
   }
   return map;
 }
@@ -110,6 +115,11 @@ function validateConfig(b) {
       if (!t || !SHIFT_TYPES.includes(t.shiftType)) return "Invalid shift type";
       if (!TIME_RE.test(t.startTime || "") || !TIME_RE.test(t.endTime || "")) return "Invalid shift time (expected HH:MM)";
       if (t.endTime <= t.startTime) return "Shift end time must be after start time";
+      for (const k of ["basePay", "bonusPay"]) {
+        if (t[k] === undefined || t[k] === null || t[k] === "") continue;
+        const n = Number(t[k]);
+        if (!Number.isFinite(n) || n < 0) return `Invalid shift ${k}`;
+      }
       byType[t.shiftType].push(t);
     }
     // Multiple staggered slots per meal period are allowed and MAY overlap
@@ -127,13 +137,16 @@ function validateConfig(b) {
 }
 
 // Replace the full set of shift templates for a restaurant inside a transaction.
+// Each template carries its own base/bonus pay (client 2026-07-22); blank = inherit.
+const tplNum = (v) => (v === "" || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 async function replaceTemplates(client, restaurantId, templates) {
   await client.query(`delete from public.shift_templates where restaurant_id = $1`, [restaurantId]);
   for (const t of templates) {
     await client.query(
-      `insert into public.shift_templates (restaurant_id, shift_type, label, start_time, end_time)
-       values ($1, $2, $3, $4, $5)`,
-      [restaurantId, t.shiftType, (t.label && String(t.label).trim()) || null, t.startTime, t.endTime],
+      `insert into public.shift_templates (restaurant_id, shift_type, label, start_time, end_time, base_pay, bonus_pay)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [restaurantId, t.shiftType, (t.label && String(t.label).trim()) || null, t.startTime, t.endTime,
+       tplNum(t.basePay), tplNum(t.bonusPay)],
     );
   }
 }

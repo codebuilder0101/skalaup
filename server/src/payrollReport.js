@@ -87,6 +87,7 @@ export async function generateMonthPay(monthRefRaw) {
               a.date::text as date, a.shift_type as "shiftType",
               to_char(a.start_time, 'HH24:MI') as "startTime",
               to_char(a.end_time, 'HH24:MI') as "endTime",
+              coalesce(a.bonus_applied, false) as "bonusApplied",
               att.checkin_at as "checkinAt",
               coalesce(att.no_show, false) as "noShow", ab.type as "absenceType"
          from public.schedule_assignments a
@@ -102,27 +103,11 @@ export async function generateMonthPay(monthRefRaw) {
     // NOT enough: the pay must follow the worked schedule, not the planned one.
     const wasWorked = (r) => !!r.checkinAt && !r.noShow && !r.absenceType;
 
-    // Weekend-bonus eligibility per (user, week): all 4 mandatory shifts assigned AND
-    // each one WORKED (checked-in), with at most 1 justified atestado standing in for a
-    // worked shift; any mandatory slot that was neither worked nor justified loses the
-    // bonus for the week (§8.2).
-    const oblig = new Map(); // `${userId}|${monday}` -> { slots:Set, worked, justified, missed }
-    for (const r of rows) {
-      if (!isWeekendMandatory(weekdayOf(r.date), r.shiftType)) continue;
-      const key = `${r.userId}|${mondayOf(r.date)}`;
-      let e = oblig.get(key);
-      if (!e) { e = { slots: new Set(), worked: 0, justified: 0, missed: 0 }; oblig.set(key, e); }
-      const slot = `${r.date}|${r.shiftType}`;
-      if (e.slots.has(slot)) continue;
-      e.slots.add(slot);
-      if (wasWorked(r)) e.worked += 1;
-      else if (r.absenceType === "justified") e.justified += 1;
-      else e.missed += 1; // unjustified furo OR simply no check-in
-    }
-    const isEligible = (userId, date) => {
-      const e = oblig.get(`${userId}|${mondayOf(date)}`);
-      return !!e && e.slots.size === 4 && e.missed === 0 && e.justified <= 1;
-    };
+    // Bonus (client 2026-07-23): the coordinator decides, per shift, whether it pays the
+    // bonus value — stored as schedule_assignments.bonus_applied. The old §8.2 weekend
+    // auto-rule is gone. A shift pays its bonus value only when the coordinator marked it
+    // AND the restaurant has bonus enabled. Payroll no longer overwrites bonus_applied.
+    const shiftGetsBonus = (r, bonusEnabled) => bonusEnabled && r.bonusApplied === true;
 
     // Build the pay lines for in-month WORKED shifts. Worked = has a real check-in and
     // is not a no-show/absence. A shift that was only planned (published) but never
@@ -156,7 +141,7 @@ export async function generateMonthPay(monthRefRaw) {
       return m.get(`${shiftType}|${startTime}|${endTime}`) ?? { base: null, bonus: null };
     };
     const ent = { user: [], rest: [], type: [], ref: [], amount: [], shiftCount: [], notes: [] };
-    const asg = { id: [], bonus: [], rate: [] };
+    const asg = { id: [], rate: [] };
 
     for (const r of rows) {
       const inMonth = r.date >= monthRef && r.date < monthEnd;
@@ -167,22 +152,22 @@ export async function generateMonthPay(monthRefRaw) {
       // Per-slot value wins; fall back to the restaurant/global resolution.
       const basePay = tpl.base != null ? tpl.base : s.basePay;
       const bonusPay = tpl.bonus != null ? tpl.bonus : s.bonusPay;
-      const eligible = s.bonusEnabled && isEligible(r.userId, r.date);
-      const appliedRate = round2(eligible ? bonusPay : basePay);
+      const bonus = shiftGetsBonus(r, s.bonusEnabled);
+      const appliedRate = round2(bonus ? bonusPay : basePay);
 
       ent.user.push(r.userId); ent.rest.push(r.restaurantId); ent.type.push("shift_pay");
       ent.ref.push(r.id); ent.amount.push(round2(basePay)); ent.shiftCount.push(1); ent.notes.push(null);
 
-      if (eligible) {
+      if (bonus) {
         const delta = round2(bonusPay - basePay);
         if (delta > 0) {
           ent.user.push(r.userId); ent.rest.push(r.restaurantId); ent.type.push("weekend_bonus");
           ent.ref.push(r.id); ent.amount.push(delta); ent.shiftCount.push(null);
-          ent.notes.push("Bônus de fim de semana completa (§8.2)");
+          ent.notes.push("Bônus do turno (marcado na escala)");
         }
       }
 
-      asg.id.push(r.id); asg.bonus.push(eligible); asg.rate.push(appliedRate);
+      asg.rate.push(appliedRate); asg.id.push(r.id);
     }
 
     // Replace only the pay lines we own; keep discounts & manual adjustments intact.
@@ -201,14 +186,15 @@ export async function generateMonthPay(monthRefRaw) {
         [period.id, ent.user, ent.rest, ent.type, ent.ref, ent.amount, ent.shiftCount, ent.notes],
       );
     }
-    // Keep assignment bonus flags/rate in sync (feeds the no-show "highest shift" rule §5).
+    // Sync only the resolved pay rate (feeds the no-show "highest shift" rule §5).
+    // bonus_applied is the coordinator's choice now — payroll must NOT overwrite it.
     if (asg.id.length > 0) {
       await client.query(
         `update public.schedule_assignments a
-            set bonus_applied = v.b, pay_rate_applied = v.rate
-           from unnest($1::uuid[], $2::boolean[], $3::numeric[]) as v(id, b, rate)
+            set pay_rate_applied = v.rate
+           from unnest($1::uuid[], $2::numeric[]) as v(id, rate)
           where a.id = v.id`,
-        [asg.id, asg.bonus, asg.rate],
+        [asg.id, asg.rate],
       );
     }
 

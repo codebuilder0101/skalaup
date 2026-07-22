@@ -164,6 +164,7 @@ router.get("/board", async (req, res) => {
     const { rows: assigned } = await pool.query(
       `select a.id as "assignmentId", a.user_id as "userId", u.name, a.status,
               a.assigned_via as "assignedVia", a.is_weekend_mandatory as "isWeekendMandatory",
+              coalesce(a.bonus_applied, false) as "bonusApplied",
               coalesce(p.current_score, 0) as score, p.current_level as level
          from public.schedule_assignments a
          join public.users u on u.id = a.user_id

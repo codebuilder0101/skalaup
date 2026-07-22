@@ -34,6 +34,11 @@ export async function cancelAssignment(id: string): Promise<{ error: { message: 
   return voidWrap(api.put(`/assignments/${id}/cancel`, {}));
 }
 
+// Mark (or unmark) a scheduled shift as paid at the bonus rate (client 2026-07-23).
+export async function setAssignmentBonus(id: string, bonusApplied: boolean): Promise<{ error: { message: string } | null }> {
+  return voidWrap(api.put(`/assignments/${id}/bonus`, { bonusApplied }));
+}
+
 export async function publishCycle(cycleId: string): Promise<{ error: { message: string } | null }> {
   return voidWrap(api.post(`/assignments/publish`, { cycleId }));
 }

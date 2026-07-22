@@ -116,13 +116,13 @@ router.post("/", requireSchedulers, async (req, res) => {
     const row = await one(
       `insert into public.schedule_assignments
          (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time,
-          status, is_weekend_mandatory, assigned_via, created_by, published_at, notify_pending)
-       values ($1,$2,$3,$4,$5,$6,$7,'published',$8,$9,$10, now(), true)
+          status, is_weekend_mandatory, bonus_applied, assigned_via, created_by, published_at, notify_pending)
+       values ($1,$2,$3,$4,$5,$6,$7,'published',$8,$9,$10,$11, now(), true)
        returning ${COLS}`,
       [
         b.cycleId ?? null, b.restaurantId, b.userId, b.date, b.shiftType,
         times.startTime, times.endTime, weekendMandatory,
-        assignedVia, req.user.sub,
+        b.bonusApplied === true, assignedVia, req.user.sub,
       ],
     );
 
@@ -157,6 +157,31 @@ router.post("/", requireSchedulers, async (req, res) => {
     }
     console.error("Assign error:", e.message);
     res.status(500).json({ error: "Falha ao alocar. Tente novamente." });
+  }
+});
+
+// PUT /api/assignments/:id/bonus { bonusApplied } — the coordinator marks (or unmarks)
+// a scheduled shift as paid at the bonus rate (client 2026-07-23). The folha uses this
+// on its next recompute; no pay is written here.
+router.put("/:id/bonus", requireSchedulers, async (req, res) => {
+  try {
+    const bonusApplied = (req.body || {}).bonusApplied === true;
+    const target = await one(
+      `select restaurant_id as "restaurantId" from public.schedule_assignments where id = $1`,
+      [req.params.id],
+    );
+    if (!target) return res.status(404).json({ error: "Not found" });
+    if (!(await canEditRestaurant(req.user, target.restaurantId))) {
+      return res.status(403).json({ error: "forbidden_restaurant", message: "Você só pode editar a escala do seu cliente." });
+    }
+    const row = await one(
+      `update public.schedule_assignments set bonus_applied = $2 where id = $1 returning ${COLS}`,
+      [req.params.id, bonusApplied],
+    );
+    res.json(row);
+  } catch (e) {
+    console.error("Bonus toggle error:", e.message);
+    res.status(500).json({ error: "Falha ao marcar o bônus." });
   }
 });
 

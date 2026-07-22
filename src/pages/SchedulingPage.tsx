@@ -25,7 +25,7 @@ import { CycleControl } from "@/components/CycleControl";
 import { listRestaurants } from "@/lib/skalaup/restaurants";
 import { formatDateBR } from "@/lib/br-format";
 import { getCycleByMonth, createCycle, listSlotAvailability } from "@/lib/skalaup/availability";
-import { createAssignment, cancelAssignment, publishCycle } from "@/lib/skalaup/assignments";
+import { createAssignment, cancelAssignment, publishCycle, setAssignmentBonus } from "@/lib/skalaup/assignments";
 import {
   getWeekBoard, getMyScope, listAllMembers,
   type WeekBoard, type WeekCell, type ShiftSlot,
@@ -253,6 +253,15 @@ function ScheduleCell({
     if (showAll) void loadAllMembers();
   };
 
+  // Mark/unmark this shift as paid at the bonus rate (client 2026-07-23).
+  const toggleBonus = async (assignmentId: string, next: boolean) => {
+    setWorking(true);
+    const { error } = await setAssignmentBonus(assignmentId, next);
+    setWorking(false);
+    if (error) { toast.error(error.message); return; }
+    await onChanged();
+  };
+
   const gridTrigger = (
     <button
       type="button"
@@ -381,7 +390,18 @@ function ScheduleCell({
                 {a.name} <Stars level={a.level} />
                 <span className="text-[10px] text-muted-foreground">{Number(a.score).toFixed(1)}</span>
               </span>
-              {canRemove && (
+              <div className="flex items-center gap-1 shrink-0">
+                {canRemove && (
+                  <Button
+                    size="sm" variant={a.bonusApplied ? "default" : "outline"}
+                    className="h-6 px-2 text-[11px]"
+                    onClick={() => void toggleBonus(a.assignmentId, !a.bonusApplied)}
+                    disabled={working}
+                    title={t("skala.scheduleBuilder.bonusToggleHint")}>
+                    {t("skala.scheduleBuilder.bonus")}
+                  </Button>
+                )}
+                {canRemove && (
                 confirmRemoveId === a.assignmentId ? (
                   <div className="flex items-center gap-1 shrink-0">
                     <span className="text-[10px] text-muted-foreground">{t("skala.scheduleBuilder.removeConfirm")}</span>
@@ -403,6 +423,7 @@ function ScheduleCell({
                   </Button>
                 )
               )}
+              </div>
             </div>
           ))}
         </div>

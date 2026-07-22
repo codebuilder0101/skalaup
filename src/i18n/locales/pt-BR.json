@@ -1811,6 +1811,8 @@
         "dinner": "Janta"
       },
       "bonusShift": "Turno de bônus",
+      "bonus": "Bônus",
+      "bonusToggleHint": "Marcar este turno para pagar o valor com bônus",
       "required": "Necessário",
       "setRequired": "Salvar",
       "requiredSaved": "Demanda atualizada para esta data.",

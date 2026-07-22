@@ -22,6 +22,7 @@ export interface BoardAssigned {
   status: "draft" | "published" | "cancelled";
   assignedVia: "coordinator" | "waiting_list" | "swap" | "manager";
   isWeekendMandatory: boolean;
+  bonusApplied: boolean;
   score: number;
   level: number | null;
 }

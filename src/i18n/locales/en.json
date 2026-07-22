@@ -1811,6 +1811,8 @@
         "dinner": "Dinner"
       },
       "bonusShift": "Bonus shift",
+      "bonus": "Bonus",
+      "bonusToggleHint": "Mark this shift to pay the bonus rate",
       "required": "Required",
       "setRequired": "Set",
       "requiredSaved": "Demand updated for this date.",

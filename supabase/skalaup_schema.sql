@@ -807,7 +807,13 @@ begin
   for c in select value::numeric from jsonb_array_elements_text(cutoffs) loop
     if coalesce(new.current_score, 0) >= c then lvl := lvl + 1; end if;
   end loop;
-  new.current_level := least(5, lvl);
+  -- Start with NO star (client 2026-07-24): a freelancer only gets a star once they
+  -- have earned points; at/below zero the level is null ("sem nível ainda").
+  if coalesce(new.current_score, 0) <= 0 then
+    new.current_level := null;
+  else
+    new.current_level := least(5, lvl);
+  end if;
   return new;
 end $$ language plpgsql;
 

@@ -76,3 +76,9 @@ export const isValidPhone = (v: string) => {
   const n = digits(v).length;
   return n === 10 || n === 11;
 };
+
+// Brazilian states (UF) — used for the regional availability filter (client 2026-07-23).
+export const BR_STATES = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+] as const;

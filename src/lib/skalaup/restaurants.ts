@@ -9,6 +9,7 @@ export type RestaurantInput = {
   address?: string | null;
   cep?: string | null;
   cnpj?: string | null;
+  state?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   geofenceRadiusM?: number;

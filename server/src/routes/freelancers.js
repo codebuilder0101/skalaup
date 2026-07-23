@@ -43,7 +43,7 @@ const SELECT = `
            'photoUrl', p.photo_url,
            'cpf', p.cpf, 'pixKey', p.pix_key, 'bankName', p.bank_name,
            'birthDate', p.birth_date, 'whatsapp', p.whatsapp,
-           'homeAddress', p.home_address, 'homeCep', p.home_cep,
+           'homeAddress', p.home_address, 'homeCep', p.home_cep, 'state', p.state,
            'homeLatitude', p.home_latitude, 'homeLongitude', p.home_longitude,
            'transport', p.transport, 'experience', p.experience,
            'hireDate', p.hire_date, 'currentScore', p.current_score,
@@ -282,8 +282,8 @@ router.put("/:id/profile", async (req, res) => {
     `insert into public.freelancer_profiles
        (user_id, member_type, photo_url, cpf, pix_key, bank_name, birth_date, whatsapp,
         home_address, home_cep, home_latitude, home_longitude,
-        transport, experience, hire_date, notes)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        transport, experience, hire_date, notes, state)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      on conflict (user_id) do update set
        member_type = excluded.member_type, photo_url = excluded.photo_url,
        cpf = excluded.cpf, pix_key = excluded.pix_key, bank_name = excluded.bank_name,
@@ -291,13 +291,14 @@ router.put("/:id/profile", async (req, res) => {
        home_address = excluded.home_address, home_cep = excluded.home_cep,
        home_latitude = excluded.home_latitude, home_longitude = excluded.home_longitude,
        transport = excluded.transport, experience = excluded.experience,
-       hire_date = excluded.hire_date, notes = excluded.notes
+       hire_date = excluded.hire_date, notes = excluded.notes, state = excluded.state
      returning id`,
     [
       req.params.id, b.memberType ?? "member", b.photoUrl ?? null,
       b.cpf ?? null, b.pixKey ?? null, b.bankName ?? null, b.birthDate ?? null, b.whatsapp ?? null,
       b.homeAddress ?? null, b.homeCep ?? null, b.homeLatitude ?? null, b.homeLongitude ?? null,
       b.transport ?? null, b.experience ?? null, b.hireDate ?? null, b.notes ?? null,
+      b.state ? String(b.state).trim().toUpperCase().slice(0, 2) || null : null,
     ],
   );
   res.json(row);

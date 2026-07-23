@@ -145,6 +145,7 @@ export interface Restaurant {
   address: string | null;
   cep: string | null;
   cnpj: string | null;
+  state: string | null;
   latitude: number | null;
   longitude: number | null;
   geofenceRadiusM: number;
@@ -207,6 +208,7 @@ export interface FreelancerProfile {
   whatsapp: string | null;
   homeAddress: string | null;
   homeCep: string | null;
+  state: string | null;
   homeLatitude: number | null;
   homeLongitude: number | null;
   transport: Transport | null;

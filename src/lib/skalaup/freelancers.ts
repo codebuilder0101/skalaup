@@ -90,6 +90,7 @@ export type ProfileInput = {
   whatsapp?: string | null;
   homeAddress?: string | null;
   homeCep?: string | null;
+  state?: string | null;
   homeLatitude?: number | null;
   homeLongitude?: number | null;
   transport?: Transport | null;

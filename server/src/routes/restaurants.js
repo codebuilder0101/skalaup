@@ -7,7 +7,7 @@ router.use(requireAuth);
 // Reads are open to any authenticated user; writes are coordinator/administrator only.
 const requireOps = requireRole("coordinator", "administrator");
 
-const SCALAR_COLS = `id, name, address, cep, cnpj, latitude, longitude,
+const SCALAR_COLS = `id, name, address, cep, cnpj, state, latitude, longitude,
   geofence_radius_m as "geofenceRadiusM", timezone,
   base_pay_per_shift as "basePayPerShift", bonus_pay_per_shift as "bonusPayPerShift",
   base_pay_lunch as "basePayLunch", bonus_pay_lunch as "bonusPayLunch",
@@ -162,8 +162,11 @@ router.get("/", async (req, res) => {
   let i = 1;
   if (activeOnly) conds.push("active = true");
   if (isMember) {
-    conds.push(`id in (select restaurant_id from public.member_clients where member_user_id = $${i++})`);
-    vals.push(req.user.sub);
+    // Regional filter (client 2026-07-23): a member sees restaurants in their OWN state.
+    // Permissive: no filter until the member has a state; a stateless restaurant shows to all.
+    const fp = await one(`select state from public.freelancer_profiles where user_id = $1`, [req.user.sub]);
+    const st = fp?.state || null;
+    if (st) { conds.push(`(state is null or state = $${i++})`); vals.push(st); }
   }
   const where = conds.length ? `where ${conds.join(" and ")}` : "";
   const { rows } = await pool.query(
@@ -194,8 +197,8 @@ router.post("/", requireOps, async (req, res) => {
         (name, address, cep, cnpj, latitude, longitude, geofence_radius_m, timezone,
          base_pay_per_shift, bonus_pay_per_shift, late_discount_amount, no_show_discount_mode,
          no_show_custom_amount, weekend_bonus_enabled, active,
-         base_pay_lunch, bonus_pay_lunch, base_pay_dinner, bonus_pay_dinner)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning ${SCALAR_COLS}`,
+         base_pay_lunch, bonus_pay_lunch, base_pay_dinner, bonus_pay_dinner, state)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning ${SCALAR_COLS}`,
       [
         b.name, b.address ?? null, b.cep ?? null, b.cnpj ?? null,
         b.latitude ?? null, b.longitude ?? null,
@@ -205,6 +208,7 @@ router.post("/", requireOps, async (req, res) => {
         b.noShowCustomAmount ?? null, b.weekendBonusEnabled ?? null, b.active ?? true,
         b.basePayLunch ?? null, b.bonusPayLunch ?? null,
         b.basePayDinner ?? null, b.bonusPayDinner ?? null,
+        b.state ? String(b.state).trim().toUpperCase().slice(0, 2) || null : null,
       ],
     );
     const row = rows[0];
@@ -226,8 +230,9 @@ router.put("/:id", requireOps, async (req, res) => {
   const err = validateConfig(b);
   if (err) return res.status(400).json({ error: err });
 
+  if (typeof b.state === "string") b.state = b.state.trim().toUpperCase().slice(0, 2) || null;
   const map = {
-    name: "name", address: "address", cep: "cep", cnpj: "cnpj",
+    name: "name", address: "address", cep: "cep", cnpj: "cnpj", state: "state",
     latitude: "latitude", longitude: "longitude",
     geofenceRadiusM: "geofence_radius_m", timezone: "timezone",
     basePayPerShift: "base_pay_per_shift", bonusPayPerShift: "bonus_pay_per_shift",

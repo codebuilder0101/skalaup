@@ -313,11 +313,16 @@ router.post("/submissions", async (req, res) => {
     // No client-link requirement (client 2026-07-22): a freelancer may offer any active
     // restaurant. A specific-restaurant offer must simply point to an active restaurant.
     if (restaurantId) {
-      const active = await one(
-        `select 1 from public.restaurants where id = $1 and active = true`, [restaurantId],
+      const rst = await one(
+        `select state from public.restaurants where id = $1 and active = true`, [restaurantId],
       );
-      if (!active) {
+      if (!rst) {
         return res.status(400).json({ error: "invalid_restaurant", message: "Restaurante inválido ou inativo." });
+      }
+      // Regional guard (client 2026-07-23): can't offer a restaurant in another state.
+      const myState = (await one(`select state from public.freelancer_profiles where user_id = $1`, [targetUser]))?.state || null;
+      if (rst.state && myState && rst.state !== myState) {
+        return res.status(403).json({ error: "wrong_state", message: "Este restaurante é de outro estado." });
       }
     }
     const cyc = await one(`select status from public.availability_cycles where id = $1`, [b.cycleId]);
@@ -419,12 +424,17 @@ router.put("/submissions/bulk", async (req, res) => {
     const restIds = [...new Set([...desired.values()].map((s) => s.restaurantId).filter(Boolean))];
     if (restIds.length) {
       const { rows: act } = await pool.query(
-        `select id from public.restaurants where id = any($1::uuid[]) and active = true`, [restIds],
+        `select id, state from public.restaurants where id = any($1::uuid[]) and active = true`, [restIds],
       );
-      const activeSet = new Set(act.map((r) => r.id));
+      const stateById = new Map(act.map((r) => [r.id, r.state]));
+      const myState = (await one(`select state from public.freelancer_profiles where user_id = $1`, [targetUser]))?.state || null;
       for (const id of restIds) {
-        if (!activeSet.has(id)) {
+        if (!stateById.has(id)) {
           return res.status(400).json({ error: "invalid_restaurant", message: "Um dos restaurantes selecionados é inválido ou inativo." });
+        }
+        const rs = stateById.get(id);
+        if (rs && myState && rs !== myState) {
+          return res.status(403).json({ error: "wrong_state", message: "Um dos restaurantes é de outro estado." });
         }
       }
     }
@@ -564,14 +574,15 @@ router.delete("/submissions/:id", async (req, res) => {
 });
 
 // GET /api/availability/my-clients — the active restaurants a freelancer may offer
-// availability for. Since 2026-07-22 that is every active restaurant (no link needed).
-router.get("/my-clients", async (_req, res) => {
+// availability for. No client link needed (2026-07-22); filtered by the freelancer's
+// own state (2026-07-23) — permissive when either side has no state.
+router.get("/my-clients", async (req, res) => {
   try {
-    // Client 2026-07-22: a freelancer may offer availability for ANY active restaurant
-    // (no client link required) and picks it right here on the availability screen.
-    const { rows } = await pool.query(
-      `select id, name from public.restaurants where active = true order by name`,
-    );
+    const isOps = req.user.role === "coordinator" || req.user.role === "administrator";
+    const st = isOps ? null : (await one(`select state from public.freelancer_profiles where user_id = $1`, [req.user.sub]))?.state || null;
+    const { rows } = st
+      ? await pool.query(`select id, name from public.restaurants where active = true and (state is null or state = $1) order by name`, [st])
+      : await pool.query(`select id, name from public.restaurants where active = true order by name`);
     res.json(rows);
   } catch (e) {
     console.error("my-clients error:", e.message);
@@ -590,10 +601,13 @@ router.get("/vacancies", async (req, res) => {
       return res.status(400).json({ error: "month (YYYY-MM-01) is required" });
     }
     const isOps = req.user.role === "coordinator" || req.user.role === "administrator";
-    const restsSql = isOps
+    // Members see vacancies for restaurants in their own state (client 2026-07-23),
+    // no longer by manual client link; permissive when the freelancer has no state.
+    const memberState = isOps ? null : (await one(`select state from public.freelancer_profiles where user_id = $1`, [req.user.sub]))?.state || null;
+    const restsSql = (isOps || !memberState)
       ? `select id as restaurant_id from public.restaurants where active = true`
-      : `select restaurant_id from public.member_clients where member_user_id = $2`;
-    const params = isOps ? [month] : [month, req.user.sub];
+      : `select id as restaurant_id from public.restaurants where active = true and (state is null or state = $2)`;
+    const params = (isOps || !memberState) ? [month] : [month, memberState];
     const { rows } = await pool.query(
       `with days as (
          select d::date as date, extract(dow from d)::int as weekday

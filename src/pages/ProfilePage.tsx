@@ -18,7 +18,7 @@ import {
 import type { Transport } from "@/lib/skalaup/types";
 import type { FreelancerWithProfile } from "@/lib/skalaup/freelancers";
 import {
-  maskCpf, maskCep, maskPhone, isValidCpf, isValidCep, isValidPhone,
+  maskCpf, maskCep, maskPhone, isValidCpf, isValidCep, isValidPhone, BR_STATES,
 } from "@/lib/br-format";
 
 const TRANSPORTS: Transport[] = ["own_car", "motorcycle", "metro", "bus", "metro_bus", "bike", "other"];
@@ -43,6 +43,7 @@ export default function ProfilePage() {
   const [birthDate, setBirthDate] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [homeCep, setHomeCep] = useState("");
+  const [state, setState] = useState(""); // UF — regional availability filter
 
   // Profile photo (R20 item A3) — uploaded to the server, saved as a URL.
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -107,6 +108,7 @@ export default function ProfilePage() {
       setBirthDate(me.profile?.birthDate ?? "");
       setWhatsapp(me.profile?.whatsapp ?? "");
       setHomeCep(me.profile?.homeCep ?? "");
+      setState(me.profile?.state ?? "");
       setPhotoUrl(me.profile?.photoUrl ?? null);
     } catch (e) {
       toast.error((e as Error).message);
@@ -142,6 +144,7 @@ export default function ProfilePage() {
           birthDate: birthDate || null,
           whatsapp: whatsapp.trim() || null,
           homeCep: homeCep.trim() || null,
+          state: state || null,
           photoUrl: photoUrl || null,
         });
       }
@@ -294,6 +297,17 @@ export default function ProfilePage() {
                   <Label>{t("skala.auth.cep")}</Label>
                   <Input value={homeCep} inputMode="numeric" placeholder="00000-000"
                     onChange={(e) => setHomeCep(maskCep(e.target.value))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("skala.profile.state")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("skala.profile.stateHint")}</p>
+                  <Select value={state || "none"} onValueChange={(v) => setState(v === "none" ? "" : v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t("skala.profile.stateNone")}</SelectItem>
+                      {BR_STATES.map((uf) => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label>{t("skala.profile.experience")}</Label>

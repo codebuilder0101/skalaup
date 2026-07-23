@@ -965,6 +965,13 @@ alter table public.app_settings add column if not exists rating_types jsonb not 
 alter table public.shift_templates add column if not exists base_pay  numeric(10,2);
 alter table public.shift_templates add column if not exists bonus_pay numeric(10,2);
 
+-- Regional filtering by state/UF (client 2026-07-23): instead of linking each
+-- freelancer to each restaurant by hand, a freelancer only sees restaurants in their
+-- OWN state on the availability screen. Both are nullable; the filter is permissive
+-- (a restaurant is hidden only when both states are set and differ).
+alter table public.restaurants add column if not exists state text;
+alter table public.freelancer_profiles add column if not exists state text;
+
 -- E3 — an extra shift opened as a vaga links back to its request, so that when a
 -- freelancer actually claims the vaga we can confirm to the requesting manager.
 alter table public.demand_overrides

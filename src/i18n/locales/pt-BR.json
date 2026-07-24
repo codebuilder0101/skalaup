@@ -1574,6 +1574,7 @@
       "tempPasswordTitle": "Membro da equipe criado",
       "tempPasswordNote": "Compartilhe esta senha temporária com a pessoa. Ela deverá definir uma nova senha no primeiro acesso.",
       "clients": "Clientes",
+      "managedRestaurants": "Restaurante(s) que ele gerencia",
       "clientsHint": "O membro só participa das atividades dos clientes selecionados.",
       "clientsNone": "Nenhum cliente ativo cadastrado ainda.",
       "bankName": "Banco",

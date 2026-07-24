@@ -47,14 +47,13 @@ type FormState = {
   whatsapp: string;
   homeAddress: string;
   homeCep: string;
-  restaurantIds: string[];
   active: boolean;
 };
 
 const emptyForm: FormState = {
   name: "", email: "", phone: "", cpf: "", pixKey: "", bankName: "", birthDate: "",
   whatsapp: "", homeAddress: "", homeCep: "",
-  restaurantIds: [], active: true,
+  active: true,
 };
 
 export default function FreelancersPage() {
@@ -84,8 +83,13 @@ export default function FreelancersPage() {
   const [grantable, setGrantable] = useState<AuthorizedRole[]>(ADMIN_GRANTABLE);
   const [emailBusy, setEmailBusy] = useState(false);
 
-  // A coordinator sees every restaurant, so links are meaningless for that role.
-  const roleTakesRestaurants = newRole !== "coordinator";
+  // Only a restaurant_manager is tied to specific restaurants (the ones they manage).
+  // Freelancers/visitors are filtered by their STATE now (client 2026-07-23) — no manual
+  // restaurant linking; a coordinator sees every restaurant. So the picker shows for
+  // managers only, which is why authorizing a team member no longer asks for restaurants.
+  const roleTakesRestaurants = newRole === "restaurant_manager";
+  const toggleNewRestaurant = (id: string) =>
+    setNewRestaurantIds((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
 
   const roleLabel = (r: AuthorizedRole) =>
     r === "coordinator" ? t("skala.roles.coordinator")
@@ -108,9 +112,6 @@ export default function FreelancersPage() {
     setNewEmail(""); setNewRole("freelancer"); setNewRestaurantIds([]);
     setEmailsOpen(true); void loadAuthEmails();
   };
-
-  const toggleNewRestaurant = (id: string) =>
-    setNewRestaurantIds((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
 
   const addEmail = async () => {
     const email = newEmail.trim().toLowerCase();
@@ -189,19 +190,9 @@ export default function FreelancersPage() {
       whatsapp: f.profile?.whatsapp ?? "",
       homeAddress: f.profile?.homeAddress ?? "",
       homeCep: f.profile?.homeCep ?? "",
-      restaurantIds: (f.clients ?? []).map((c) => c.id),
       active: f.status !== "inactive",
     });
     setDialogOpen(true);
-  };
-
-  const toggleClient = (id: string) => {
-    setForm((prev) => ({
-      ...prev,
-      restaurantIds: prev.restaurantIds.includes(id)
-        ? prev.restaurantIds.filter((x) => x !== id)
-        : [...prev.restaurantIds, id],
-    }));
   };
 
   const save = async () => {
@@ -223,7 +214,6 @@ export default function FreelancersPage() {
       whatsapp: form.whatsapp.trim() || null,
       homeAddress: form.homeAddress.trim() || null,
       homeCep: form.homeCep.trim() || null,
-      restaurantIds: form.restaurantIds,
     };
 
     if (form.id) {
@@ -490,12 +480,12 @@ export default function FreelancersPage() {
               </Select>
             </div>
 
-            {/* Restaurants are chosen HERE so the person lands already linked — an
-                approved manager used to arrive with no restaurant at all. */}
+            {/* Restaurants only for a restaurant_manager — the restaurant(s) they manage.
+                Freelancers/visitors are filtered by state, so no restaurant marking. */}
             {roleTakesRestaurants && restaurants.length > 0 && (
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-1.5">
-                  <Store className="w-3.5 h-3.5" />{t("skala.freelancers.clients")}
+                  <Store className="w-3.5 h-3.5" />{t("skala.freelancers.managedRestaurants")}
                 </Label>
                 <div className="flex flex-wrap gap-1.5">
                   {restaurants.map((r) => {
@@ -622,36 +612,6 @@ export default function FreelancersPage() {
               <Label>{t("skala.auth.cep")}</Label>
               <Input value={form.homeCep} inputMode="numeric" placeholder="00000-000"
                 onChange={(e) => setForm({ ...form, homeCep: maskCep(e.target.value) })} />
-            </div>
-            {/* Client links (§3) — gates which clients' activities the member joins. */}
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5"><Store className="w-3.5 h-3.5" />{t("skala.freelancers.clients")}</Label>
-              {restaurants.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground">{t("skala.freelancers.clientsNone")}</p>
-              ) : (
-                <>
-                  <div className="flex flex-wrap gap-1.5">
-                    {restaurants.map((r) => {
-                      const on = form.restaurantIds.includes(r.id);
-                      return (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => toggleClient(r.id)}
-                          className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                            on
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border bg-background text-muted-foreground hover:bg-muted"
-                          }`}
-                        >
-                          {r.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">{t("skala.freelancers.clientsHint")}</p>
-                </>
-              )}
             </div>
             {/* Active/inactive toggle (R17) — mirrors the client toggle. Editing only. */}
             {form.id && (

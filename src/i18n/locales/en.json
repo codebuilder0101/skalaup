@@ -1574,6 +1574,7 @@
       "tempPasswordTitle": "Team member created",
       "tempPasswordNote": "Share this temporary password with the member. They'll be asked to set a new one on first login.",
       "clients": "Clients",
+      "managedRestaurants": "Restaurant(s) they manage",
       "clientsHint": "The member can only join activities for the selected clients.",
       "clientsNone": "No active clients registered yet.",
       "bankName": "Bank",

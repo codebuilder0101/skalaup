@@ -127,6 +127,14 @@
     @apply border-border;
   }
 
+  html,
+  body {
+    /* Block the mobile pull-to-refresh gesture: an accidental pull-down while
+       scrolling a long form (e.g. the profile ficha) reloads the page and wipes
+       in-memory input. Vertical scrolling itself is unaffected. */
+    overscroll-behavior-y: contain;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: var(--font-display);

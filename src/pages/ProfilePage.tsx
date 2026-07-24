@@ -23,6 +23,17 @@ import {
 
 const TRANSPORTS: Transport[] = ["own_car", "motorcycle", "metro", "bus", "metro_bus", "bike", "other"];
 
+// A per-user draft of the ficha, kept in sessionStorage so an unsaved form
+// survives a page reload (on mobile, a pull-to-refresh or a low-memory tab reload
+// would otherwise wipe everything the freelancer typed). Cleared on a successful
+// save. sessionStorage (not localStorage) so it's scoped to the tab session.
+const draftKey = (userId: string) => `skalaup-profile-draft:${userId}`;
+type ProfileDraft = {
+  name: string; phone: string; transport: Transport | ""; experience: string;
+  homeAddress: string; cpf: string; pixKey: string; bankName: string; birthDate: string;
+  whatsapp: string; homeCep: string; state: string; photoUrl: string | null;
+};
+
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { user, refresh } = useAuth();
@@ -49,6 +60,9 @@ export default function ProfilePage() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Gates draft persistence until the initial server load + draft restore is done,
+  // so we never overwrite a saved draft with the server values during hydration.
+  const hydratedRef = useRef(false);
 
   const isFreelancer = user?.role === "freelancer" || user?.role === "visitor";
 
@@ -110,14 +124,48 @@ export default function ProfilePage() {
       setHomeCep(me.profile?.homeCep ?? "");
       setState(me.profile?.state ?? "");
       setPhotoUrl(me.profile?.photoUrl ?? null);
+      // Restore an unsaved draft over the server values, so a mobile reload mid-fill
+      // doesn't lose what was typed. Invalid/corrupt drafts are ignored.
+      try {
+        const raw = sessionStorage.getItem(draftKey(user.id));
+        if (raw) {
+          const d = JSON.parse(raw) as Partial<ProfileDraft>;
+          if (typeof d.name === "string") setName(d.name);
+          if (typeof d.phone === "string") setPhone(d.phone);
+          if (typeof d.transport === "string") setTransport(d.transport as Transport | "");
+          if (typeof d.experience === "string") setExperience(d.experience);
+          if (typeof d.homeAddress === "string") setHomeAddress(d.homeAddress);
+          if (typeof d.cpf === "string") setCpf(d.cpf);
+          if (typeof d.pixKey === "string") setPixKey(d.pixKey);
+          if (typeof d.bankName === "string") setBankName(d.bankName);
+          if (typeof d.birthDate === "string") setBirthDate(d.birthDate);
+          if (typeof d.whatsapp === "string") setWhatsapp(d.whatsapp);
+          if (typeof d.homeCep === "string") setHomeCep(d.homeCep);
+          if (typeof d.state === "string") setState(d.state);
+          if (typeof d.photoUrl === "string" || d.photoUrl === null) setPhotoUrl(d.photoUrl ?? null);
+        }
+      } catch { /* ignore corrupt draft */ }
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
+      hydratedRef.current = true;
       setLoading(false);
     }
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Persist the ficha to sessionStorage on every change once hydrated, so any page
+  // reload (notably mobile pull-to-refresh / low-memory reload) restores it intact.
+  useEffect(() => {
+    if (loading || !hydratedRef.current || !user) return;
+    const draft: ProfileDraft = {
+      name, phone, transport, experience, homeAddress, cpf, pixKey, bankName,
+      birthDate, whatsapp, homeCep, state, photoUrl,
+    };
+    try { sessionStorage.setItem(draftKey(user.id), JSON.stringify(draft)); } catch { /* quota */ }
+  }, [loading, user, name, phone, transport, experience, homeAddress, cpf, pixKey, bankName, birthDate, whatsapp, homeCep, state, photoUrl]);
 
   const save = async () => {
     if (!user) return;
@@ -149,6 +197,8 @@ export default function ProfilePage() {
         });
       }
       await refresh();
+      // Saved to the server → the draft is no longer needed.
+      try { sessionStorage.removeItem(draftKey(user.id)); } catch { /* ignore */ }
       toast.success(t("skala.common.updated"));
       void load();
     } catch (e) {
@@ -317,7 +367,7 @@ export default function ProfilePage() {
             )}
 
             <div className="flex justify-end">
-              <Button onClick={() => void save()} disabled={saving}>
+              <Button type="button" onClick={() => void save()} disabled={saving}>
                 {saving ? t("skala.common.saving") : t("skala.common.save")}
               </Button>
             </div>
@@ -356,7 +406,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div className="flex justify-end">
-                    <Button variant="outline" onClick={() => void changePassword()} disabled={changingPwd}>
+                    <Button type="button" variant="outline" onClick={() => void changePassword()} disabled={changingPwd}>
                       {t("skala.profile.changePassword")}
                     </Button>
                   </div>

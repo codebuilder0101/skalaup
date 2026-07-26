@@ -1670,7 +1670,9 @@
         "closed": "Janela fechada.",
         "openUntil": "Aberta até {{date}}",
         "invalidRange": "A data de fechamento deve ser igual ou posterior à de abertura.",
-        "pastWarning": "A data de fechamento está no passado — a janela pode fechar automaticamente. Use uma data futura."
+        "pastWarning": "A data de fechamento está no passado — a janela pode fechar automaticamente. Use uma data futura.",
+        "cyclePicker": "Ir para o ciclo",
+        "cyclePickerPlaceholder": "Selecione um ciclo"
       }
     },
     "cycle": {

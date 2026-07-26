@@ -1670,7 +1670,9 @@
         "closed": "Window closed.",
         "openUntil": "Open until {{date}}",
         "invalidRange": "The closing date must be on or after the opening date.",
-        "pastWarning": "The closing date is in the past — the window may auto-close. Use a future date."
+        "pastWarning": "The closing date is in the past — the window may auto-close. Use a future date.",
+        "cyclePicker": "Go to cycle",
+        "cyclePickerPlaceholder": "Select a cycle"
       }
     },
     "cycle": {

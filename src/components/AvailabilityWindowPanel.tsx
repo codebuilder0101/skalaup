@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { SlidersHorizontal, Loader2, Unlock, Lock, Save } from "lucide-react";
@@ -7,8 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { getCycleByMonth, createCycle, setCycleStatus } from "@/lib/skalaup/availability";
+import {
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from "@/components/ui/select";
+import { getCycleByMonth, createCycle, setCycleStatus, listCycles } from "@/lib/skalaup/availability";
 import type { AvailabilityCycle } from "@/lib/skalaup/types";
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // Coordinator/administrator control to open, extend or close the monthly
 // availability window on demand (§3.1). Drives the parent page's active cycle so
@@ -47,7 +52,16 @@ export function AvailabilityWindowPanel({ cycle, onChange }: Props) {
   const [opensDate, setOpensDate] = useState<string>(cycle?.opensAt?.slice(0, 10) ?? initial.opens);
   const [closesDate, setClosesDate] = useState<string>(cycle?.closesAt?.slice(0, 10) ?? initial.closes);
   const [busy, setBusy] = useState(false);
+  const [cycles, setCycles] = useState<AvailabilityCycle[]>([]);
   const syncedId = useRef<string | null>(cycle?.id ?? null);
+
+  // All existing cycles, for the picker — so every month (open OR closed) is
+  // visible and selectable. Opening a new month never hides a previous one.
+  const refreshCycles = useCallback(async () => {
+    const { data } = await listCycles();
+    setCycles(data);
+  }, []);
+  useEffect(() => { void refreshCycles(); }, [refreshCycles]);
 
   // When the active cycle changes identity (initial load, month switch), mirror
   // its window into the inputs. Guarded by id so it never loops on our own writes.
@@ -110,6 +124,7 @@ export function AvailabilityWindowPanel({ cycle, onChange }: Props) {
       setOpensDate(fresh.opensAt.slice(0, 10));
       setClosesDate(fresh.closesAt.slice(0, 10));
     }
+    void refreshCycles();
     toast.success(t(isOpen ? "skala.availability.manage.saved" : "skala.availability.manage.opened"));
   };
 
@@ -121,8 +136,27 @@ export function AvailabilityWindowPanel({ cycle, onChange }: Props) {
     const { data: fresh } = await getCycleByMonth(cycle.referenceMonth);
     setBusy(false);
     if (fresh) { syncedId.current = fresh.id; onChange(fresh); }
+    void refreshCycles();
     toast.success(t("skala.availability.manage.closed"));
   };
+
+  // Month/year selectors (replace the native <input type="month">, whose letter
+  // type-ahead jumped to Janeiro). Picking is click-only, so no letter-jump.
+  const year = month.slice(0, 4);
+  const mm = month.slice(5, 7);
+  const monthOptions = Array.from({ length: 12 }, (_, i) => ({
+    value: String(i + 1).padStart(2, "0"),
+    label: cap(new Intl.DateTimeFormat(lng, { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2000, i, 1)))),
+  }));
+  const nowYear = new Date().getFullYear();
+  const yearOptions = [...new Set<number>([
+    nowYear - 1, nowYear, nowYear + 1, Number(year),
+    ...cycles.map((c) => Number(c.referenceMonth.slice(0, 4))),
+  ])].sort((a, b) => a - b);
+  const pickMonth = (yr: string, mo: string) => void loadMonth(`${yr}-${mo}`);
+  const monthLabel = (ym: string) =>
+    cap(new Intl.DateTimeFormat(lng, { month: "long", year: "numeric", timeZone: "UTC" })
+      .format(new Date(`${ym}-01T00:00:00Z`)));
 
   return (
     <Card className="p-4 sm:p-5 space-y-4 border-primary/30 bg-primary/[0.03]">
@@ -145,11 +179,43 @@ export function AvailabilityWindowPanel({ cycle, onChange }: Props) {
         </div>
       </div>
 
+      {cycles.length > 0 && (
+        <div className="space-y-1">
+          <Label className="text-[11px]">{t("skala.availability.manage.cyclePicker")}</Label>
+          <Select
+            value={cycles.some((c) => c.referenceMonth.slice(0, 7) === month) ? month : undefined}
+            onValueChange={(v) => void loadMonth(v)}
+            disabled={busy}
+          >
+            <SelectTrigger className="h-9 w-64"><SelectValue placeholder={t("skala.availability.manage.cyclePickerPlaceholder")} /></SelectTrigger>
+            <SelectContent>
+              {cycles.map((c) => (
+                <SelectItem key={c.id} value={c.referenceMonth.slice(0, 7)}>
+                  {monthLabel(c.referenceMonth.slice(0, 7))} — {t(`skala.scheduleBuilder.cycleStatus.${c.status}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1">
           <Label className="text-[11px]">{t("skala.availability.manage.month")}</Label>
-          <Input type="month" className="h-9 w-40" value={month} disabled={busy}
-            onChange={(e) => e.target.value && void loadMonth(e.target.value)} />
+          <div className="flex gap-2">
+            <Select value={mm} onValueChange={(v) => pickMonth(year, v)} disabled={busy}>
+              <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={year} onValueChange={(v) => pickMonth(v, mm)} disabled={busy}>
+              <SelectTrigger className="h-9 w-24"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="space-y-1">
           <Label className="text-[11px]">{t("skala.availability.manage.opensAt")}</Label>

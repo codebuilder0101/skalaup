@@ -100,7 +100,7 @@ export default function TodayPage() {
                           <div>
                             <p className="text-sm font-medium text-foreground">{s.freelancerName}</p>
                             <p className="text-xs text-muted-foreground">
-                              {t(`skala.scheduleBuilder.shift.${s.shiftType}`)} · {s.startTime.slice(0, 5)}–{s.endTime.slice(0, 5)}
+                              {t(`skala.scheduleBuilder.shift.${s.shiftType}`)} · {s.startTime?.slice(0, 5)}–{s.endTime?.slice(0, 5)}
                             </p>
                           </div>
                         </div>

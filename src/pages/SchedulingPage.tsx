@@ -120,7 +120,7 @@ function ScheduleCell({
   const slotList: ShiftSlot[] = slots.length ? slots : [{ label: null, startTime, endTime }];
   const slot = slotList[Math.min(slotIdx, slotList.length - 1)] ?? slotList[0];
   const slotText = (s: ShiftSlot) =>
-    `${s.label ? `${s.label} · ` : ""}${s.startTime.slice(0, 5)}–${s.endTime.slice(0, 5)}`;
+    `${s.label ? `${s.label} · ` : ""}${s.startTime?.slice(0, 5) ?? ""}–${s.endTime?.slice(0, 5) ?? ""}`;
 
   const emptyNoDemand = cell.required === 0 && cell.assignedCount === 0;
   // No capacity cap (§3.5): the cell shows only how many are scheduled; a deficit
@@ -286,7 +286,7 @@ function ScheduleCell({
       <div className="space-y-0.5">
         {cell.assigned.map((a) => (
           <div key={a.assignmentId} className="flex items-center gap-1 rounded bg-emerald-500/10 px-1 py-0.5">
-            <span className="text-[11px] text-foreground truncate flex-1">{a.name.split(" ")[0]}</span>
+            <span className="text-[11px] text-foreground truncate flex-1">{a.name?.split(" ")[0]}</span>
             <span className="text-[9px] text-muted-foreground">{Number(a.score).toFixed(0)}</span>
           </div>
         ))}
@@ -329,7 +329,7 @@ function ScheduleCell({
         <div className="mt-1.5 flex flex-wrap gap-1">
           {cell.assigned.map((a) => (
             <span key={a.assignmentId} className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5">
-              <span className="text-[11px] text-foreground">{a.name.split(" ")[0]}</span>
+              <span className="text-[11px] text-foreground">{a.name?.split(" ")[0]}</span>
               <span className="text-[9px] text-muted-foreground">{Number(a.score).toFixed(0)}</span>
             </span>
           ))}
@@ -983,7 +983,7 @@ export default function SchedulingPage() {
                         : <Moon className="w-4 h-4 text-indigo-500" />}
                       {t(`skala.scheduleBuilder.shift.${s.shiftType}`)}
                       <span className="text-muted-foreground font-normal text-xs">
-                        {s.rows[0]?.row.startTime.slice(0, 5)}–{s.rows[0]?.row.endTime.slice(0, 5)}
+                        {s.rows[0]?.row.startTime?.slice(0, 5)}–{s.rows[0]?.row.endTime?.slice(0, 5)}
                       </span>
                     </div>
                     {s.rows.map(({ row, cell }) => {
@@ -1060,7 +1060,7 @@ export default function SchedulingPage() {
                         : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
                       {t(`skala.scheduleBuilder.shift.${sg.shiftType}`)}
                       <span className="text-muted-foreground font-normal">
-                        {sg.restaurants[0]?.startTime.slice(0, 5)}–{sg.restaurants[0]?.endTime.slice(0, 5)}
+                        {sg.restaurants[0]?.startTime?.slice(0, 5)}–{sg.restaurants[0]?.endTime?.slice(0, 5)}
                       </span>
                     </div>
                   </div>

@@ -31,6 +31,29 @@ export async function setCycleStatus(id: string, status: "open" | "closed" | "pu
   return voidWrap(api.put(`/availability/cycles/${id}/status`, { status }));
 }
 
+// Coordinator view of who submitted availability for a cycle (and who's missing),
+// with push-reachability and whether the reminder was read.
+export interface SubmissionMember {
+  userId: string;
+  name: string;
+  submitted: boolean;
+  pushEnabled: boolean;
+  reminderSentAt: string | null;
+  reminderReadAt: string | null;
+}
+export interface SubmissionStatus {
+  total: number;
+  submittedCount: number;
+  missingCount: number;
+  members: SubmissionMember[];
+}
+export function getSubmissionStatus(cycleId: string): Promise<Result<SubmissionStatus | null>> {
+  return wrap(api.get<SubmissionStatus>(`/availability/cycles/${cycleId}/submission-status`), null);
+}
+export async function remindAvailability(cycleId: string, userIds: string[]): Promise<Result<{ sent: number } | null>> {
+  return wrap(api.post<{ sent: number }>(`/availability/cycles/${cycleId}/remind`, { userIds }), null);
+}
+
 // restaurantId omitted / null = "any restaurant / no preference" (§3.2).
 export async function submitAvailability(params: {
   cycleId: string; userId: string; date: string; shiftType: ShiftType;

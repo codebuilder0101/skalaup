@@ -13,6 +13,7 @@ import {
   type MyClient, type Vacancy, type DesiredSlot,
 } from "@/lib/skalaup/availability";
 import { AvailabilityWindowPanel } from "@/components/AvailabilityWindowPanel";
+import { AvailabilityStatusPanel } from "@/components/AvailabilityStatusPanel";
 import type { AvailabilityCycle, ShiftType } from "@/lib/skalaup/types";
 
 const SHIFTS: ShiftType[] = ["lunch", "dinner"];
@@ -301,6 +302,9 @@ export default function AvailabilityPage() {
 
         {/* Coordinator/administrator: open, extend or close the availability window (§3.1). */}
         {isOps && <AvailabilityWindowPanel cycle={cycle} onChange={setCycle} />}
+
+        {/* Coordinator/administrator: who submitted vs who's missing, with nudge. */}
+        {isOps && <AvailabilityStatusPanel cycle={cycle} />}
 
         {!editable && cycle && !isOps && (
           <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/40 px-4 py-2.5 text-sm text-muted-foreground">

@@ -1673,6 +1673,23 @@
         "pastWarning": "The closing date is in the past — the window may auto-close. Use a future date.",
         "cyclePicker": "Go to cycle",
         "cyclePickerPlaceholder": "Select a cycle"
+      },
+      "status": {
+        "title": "Team availability",
+        "subtitle": "See who has submitted and nudge whoever is missing.",
+        "submitted": "Submitted",
+        "missing": "Missing",
+        "total": "Team",
+        "missingList": "Not submitted yet",
+        "noMissing": "Everyone has submitted their availability! 🎉",
+        "remind": "Remind",
+        "remindAll": "Remind all ({{count}})",
+        "reminded": "Reminder sent to {{count}} person(s).",
+        "pushOn": "push on",
+        "pushOff": "no push",
+        "reminderRead": "read the reminder",
+        "reminderUnread": "didn't read the reminder",
+        "notReminded": "no reminder yet"
       }
     },
     "cycle": {

@@ -1673,6 +1673,23 @@
         "pastWarning": "A data de fechamento está no passado — a janela pode fechar automaticamente. Use uma data futura.",
         "cyclePicker": "Ir para o ciclo",
         "cyclePickerPlaceholder": "Selecione um ciclo"
+      },
+      "status": {
+        "title": "Disponibilidade da equipe",
+        "subtitle": "Veja quem já lançou e cobre quem ainda falta.",
+        "submitted": "Lançaram",
+        "missing": "Faltam",
+        "total": "Equipe",
+        "missingList": "Ainda não lançaram",
+        "noMissing": "Todo mundo já lançou a disponibilidade! 🎉",
+        "remind": "Cobrar",
+        "remindAll": "Cobrar todos ({{count}})",
+        "reminded": "Lembrete enviado para {{count}} pessoa(s).",
+        "pushOn": "push ativo",
+        "pushOff": "sem push",
+        "reminderRead": "leu o lembrete",
+        "reminderUnread": "não leu o lembrete",
+        "notReminded": "sem lembrete ainda"
       }
     },
     "cycle": {

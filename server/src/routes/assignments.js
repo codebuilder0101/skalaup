@@ -93,36 +93,41 @@ router.post("/", requireSchedulers, async (req, res) => {
       ? { startTime: b.startTime, endTime: b.endTime }
       : await resolveShiftTimes(b.restaurantId, b.shiftType);
 
-    // Attribution (§3.4): managers → 'manager'; an explicit value wins; otherwise
-    // an assignment made after the cycle is published is a waiting-list pull into an
-    // opened vacancy ('waiting_list'), while building the draft is 'coordinator'.
+    // The cycle's publish state decides both attribution and whether the shift goes
+    // live now. While the cycle is still 'open' (the coordinator is BUILDING), the
+    // shift is a DRAFT — invisible to the freelancer's "Minha Escala" until the
+    // coordinator clicks Publicar (client 2026-07-27: an escala must never go live on
+    // its own). Once the cycle is already published, a later add is a waiting-list
+    // pull into an opened vacancy and goes live immediately.
+    const cyc = b.cycleId
+      ? await one(`select status from public.availability_cycles where id = $1`, [b.cycleId])
+      : null;
+    const cyclePublished = cyc?.status === "published";
+
     let assignedVia;
     if (req.user.role === "restaurant_manager") {
       assignedVia = "manager";
     } else if (b.assignedVia) {
       assignedVia = b.assignedVia;
     } else {
-      const cyc = b.cycleId
-        ? await one(`select status from public.availability_cycles where id = $1`, [b.cycleId])
-        : null;
-      assignedVia = cyc && cyc.status === "published" ? "waiting_list" : "coordinator";
+      assignedVia = cyclePublished ? "waiting_list" : "coordinator";
     }
 
-    // The shift is live immediately (published) so the coordinator sees the result,
-    // but the affected freelancer is NOT notified now (client 2026-07-20): the change
-    // is marked notify_pending and the alert is batched to the next publish, which
-    // notifies ONLY the freelancers who actually changed. (Bulk auto-generate still
-    // creates drafts, which publish flips to published + notifies.)
+    // Draft while building (published_at null, nothing to notify yet); published +
+    // queued-for-notify once the cycle is live. The publish endpoint flips any
+    // remaining drafts to published and notifies the affected freelancers.
+    const status = cyclePublished ? "published" : "draft";
     const row = await one(
       `insert into public.schedule_assignments
          (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time,
           status, is_weekend_mandatory, bonus_applied, assigned_via, created_by, published_at, notify_pending)
-       values ($1,$2,$3,$4,$5,$6,$7,'published',$8,$9,$10,$11, now(), true)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+               case when $13 then now() else null end, $13)
        returning ${COLS}`,
       [
         b.cycleId ?? null, b.restaurantId, b.userId, b.date, b.shiftType,
-        times.startTime, times.endTime, weekendMandatory,
-        b.bonusApplied === true, assignedVia, req.user.sub,
+        times.startTime, times.endTime, status, weekendMandatory,
+        b.bonusApplied === true, assignedVia, req.user.sub, cyclePublished,
       ],
     );
 

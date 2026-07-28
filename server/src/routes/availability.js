@@ -175,6 +175,80 @@ router.put("/cycles/:id/status", requireOps, async (req, res) => {
   res.json(row);
 });
 
+// GET /api/availability/cycles/:id/submission-status — per active freelancer: did
+// they submit availability for this cycle, are they push-reachable, and did they
+// read the reminder. Lets the coordinator see WHO is missing and chase them
+// (client 2026-07-27) instead of checking restaurant by restaurant.
+router.get("/cycles/:id/submission-status", requireOps, async (req, res) => {
+  try {
+    const cycleId = req.params.id;
+    const { rows } = await pool.query(
+      `select u.id as "userId", u.name,
+         exists(select 1 from public.availability_submissions s
+                 where s.cycle_id = $1 and s.user_id = u.id and s.status = 'submitted') as submitted,
+         exists(select 1 from public.device_tokens d where d.user_id = u.id) as "pushEnabled",
+         (select n.read_at from public.notifications n
+            where n.recipient_user_id = u.id and n.type = 'availability_reminder'
+              and n.data->>'cycleId' = $1::text
+            order by n.sent_at desc nulls last limit 1) as "reminderReadAt",
+         (select n.sent_at from public.notifications n
+            where n.recipient_user_id = u.id and n.type = 'availability_reminder'
+              and n.data->>'cycleId' = $1::text
+            order by n.sent_at desc nulls last limit 1) as "reminderSentAt"
+         from public.users u
+        where u.role in ('freelancer','visitor') and u.status = 'active'
+        order by submitted asc, u.name asc`,
+      [cycleId],
+    );
+    const submittedCount = rows.filter((r) => r.submitted).length;
+    res.json({
+      total: rows.length,
+      submittedCount,
+      missingCount: rows.length - submittedCount,
+      members: rows,
+    });
+  } catch (e) {
+    console.error("submission-status error:", e.message);
+    res.status(500).json({ error: "Falha ao carregar status de disponibilidade." });
+  }
+});
+
+// POST /api/availability/cycles/:id/remind { userIds } — nudge specific people
+// (typically those who haven't submitted) to lançar disponibilidade. Sends the
+// availability_reminder notification (bell + push) to each valid active member.
+router.post("/cycles/:id/remind", requireOps, async (req, res) => {
+  try {
+    const cycleId = req.params.id;
+    const userIds = Array.isArray((req.body || {}).userIds) ? req.body.userIds : [];
+    if (!userIds.length) return res.status(400).json({ error: "userIds is required" });
+    const cyc = await one(
+      `select reference_month::text as "referenceMonth" from public.availability_cycles where id = $1`,
+      [cycleId],
+    );
+    if (!cyc) return res.status(404).json({ error: "Not found" });
+    const month = new Date(`${cyc.referenceMonth}T00:00:00Z`)
+      .toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+    const { rows: valid } = await pool.query(
+      `select id from public.users
+        where id = any($1::uuid[]) and role in ('freelancer','visitor') and status = 'active'`,
+      [userIds],
+    );
+    for (const u of valid) {
+      await notify({
+        recipientUserId: u.id,
+        type: "availability_reminder",
+        title: "Lance sua disponibilidade",
+        body: `Lembrete: o período para lançar disponibilidade de ${month} está aberto. Marque seus turnos.`,
+        data: { cycleId, path: "/availability" },
+      });
+    }
+    res.json({ sent: valid.length });
+  } catch (e) {
+    console.error("remind error:", e.message);
+    res.status(500).json({ error: "Falha ao enviar lembrete." });
+  }
+});
+
 // ---- Granular reopen exceptions (§3.1) ------------------------------------
 // Reopen a closed cycle for ONE restaurant or ONE freelancer.
 

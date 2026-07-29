@@ -111,6 +111,9 @@ export interface WeekCell {
   deficit: number;
   candidateCount: number;
   assigned: BoardAssigned[];
+  // Custom hours for an extra/intermediate shift on this specific date (from a date
+  // override). When present, staffing this cell uses these hours, not the template's.
+  slotOverride?: ShiftSlot;
 }
 
 export interface ShiftSlot {
@@ -215,6 +218,8 @@ export interface OverrideRow {
   shiftType: ShiftType;
   requiredCount: number;
   reason: string | null;
+  startTime: string | null;
+  endTime: string | null;
 }
 
 export async function listOverrides(params: {
@@ -227,7 +232,8 @@ export async function listOverrides(params: {
 }
 
 export async function setOverride(params: {
-  restaurantId: string; date: string; shiftType: ShiftType; requiredCount: number; reason?: string | null;
+  restaurantId: string; date: string; shiftType: ShiftType; requiredCount: number;
+  reason?: string | null; startTime?: string | null; endTime?: string | null;
 }): Promise<Result<OverrideRow | null>> {
   return wrap(api.put<OverrideRow>(`/scheduling/overrides`, params), null);
 }

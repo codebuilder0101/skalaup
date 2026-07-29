@@ -1054,3 +1054,10 @@ begin
     );
   end loop;
 end $$;
+
+-- Extra/intermediate shift hours (client 2026-07-29): a date override may carry its
+-- own start/end time so an extra shift can run at intermediate hours (e.g. 15:00–19:00)
+-- instead of the restaurant's standard lunch/dinner template times. NULL = use the
+-- template hours (behavior unchanged for existing overrides).
+alter table public.demand_overrides add column if not exists start_time time;
+alter table public.demand_overrides add column if not exists end_time   time;

@@ -38,6 +38,9 @@ export default function DemandPage() {
   const [ovShift, setOvShift] = useState<ShiftType>("lunch");
   const [ovCount, setOvCount] = useState("");
   const [ovReason, setOvReason] = useState("");
+  // Optional custom hours for an extra/intermediate shift (both or neither).
+  const [ovStart, setOvStart] = useState("");
+  const [ovEnd, setOvEnd] = useState("");
   const [addingOv, setAddingOv] = useState(false);
 
   useEffect(() => {
@@ -103,15 +106,19 @@ export default function DemandPage() {
       toast.error(t("skala.demand.overrideMissing"));
       return;
     }
+    // Custom hours are optional but must come as a pair (start before end).
+    if ((ovStart && !ovEnd) || (!ovStart && ovEnd)) { toast.error(t("skala.demand.timePair")); return; }
+    if (ovStart && ovEnd && ovEnd <= ovStart) { toast.error(t("skala.demand.timeOrder")); return; }
     setAddingOv(true);
     const { error } = await setOverride({
       restaurantId, date: ovDate, shiftType: ovShift,
       requiredCount: Math.max(0, Number(ovCount)), reason: ovReason || null,
+      startTime: ovStart || null, endTime: ovEnd || null,
     });
     setAddingOv(false);
     if (error) { toast.error(error.message); return; }
     toast.success(t("skala.demand.overrideSaved"));
-    setOvDate(""); setOvCount(""); setOvReason(""); setOvShift("lunch");
+    setOvDate(""); setOvCount(""); setOvReason(""); setOvShift("lunch"); setOvStart(""); setOvEnd("");
     await load();
   };
 
@@ -231,6 +238,14 @@ export default function DemandPage() {
                   <Input inputMode="numeric" className="h-8 w-20 text-center text-sm" placeholder="0"
                     value={ovCount} onChange={(e) => setOvCount(e.target.value.replace(/[^0-9]/g, ""))} />
                 </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">{t("skala.demand.startTime")}</Label>
+                  <Input type="time" className="h-8 w-28 text-sm" value={ovStart} onChange={(e) => setOvStart(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">{t("skala.demand.endTime")}</Label>
+                  <Input type="time" className="h-8 w-28 text-sm" value={ovEnd} onChange={(e) => setOvEnd(e.target.value)} />
+                </div>
                 <div className="space-y-1 flex-1 min-w-[140px]">
                   <Label className="text-[11px]">{t("skala.demand.reason")}</Label>
                   <Input className="h-8 text-sm" placeholder={t("skala.demand.reasonPlaceholder")}
@@ -253,7 +268,10 @@ export default function DemandPage() {
                     <div key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border/60 px-3 py-2">
                       <span className="text-sm font-medium text-foreground w-28 shrink-0">{fmtDate(o.date)}</span>
                       <span className="flex items-center gap-1 text-xs text-muted-foreground w-24 shrink-0">
-                        {shiftIcon(o.shiftType)}{t(`skala.scheduleBuilder.shift.${o.shiftType}`)}
+                        {shiftIcon(o.shiftType)}
+                        {o.startTime && o.endTime
+                          ? `${o.startTime}–${o.endTime}`
+                          : t(`skala.scheduleBuilder.shift.${o.shiftType}`)}
                       </span>
                       <span className="text-sm font-semibold text-primary w-10 shrink-0">{o.requiredCount}</span>
                       <span className="flex-1 min-w-0 truncate text-xs text-muted-foreground">{o.reason || "—"}</span>

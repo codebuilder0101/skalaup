@@ -1726,7 +1726,11 @@
       "addOverride": "Add",
       "noOverrides": "No overrides set.",
       "overrideSaved": "Override saved.",
-      "overrideMissing": "Enter the date and quantity."
+      "overrideMissing": "Enter the date and quantity.",
+      "startTime": "Start",
+      "endTime": "End",
+      "timePair": "Fill both start and end (or leave both blank).",
+      "timeOrder": "End must be after start."
     },
     "financial": {
       "title": "Financial",

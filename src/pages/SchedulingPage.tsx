@@ -117,7 +117,10 @@ function ScheduleCell({
   const [loadingAll, setLoadingAll] = useState(false);
 
   // The slots available for this meal period; fall back to the primary times.
-  const slotList: ShiftSlot[] = slots.length ? slots : [{ label: null, startTime, endTime }];
+  // An extra/intermediate shift on this date carries its own hours → staff at those.
+  const slotList: ShiftSlot[] = cell.slotOverride
+    ? [cell.slotOverride]
+    : slots.length ? slots : [{ label: null, startTime, endTime }];
   const slot = slotList[Math.min(slotIdx, slotList.length - 1)] ?? slotList[0];
   const slotText = (s: ShiftSlot) =>
     `${s.label ? `${s.label} · ` : ""}${s.startTime?.slice(0, 5) ?? ""}–${s.endTime?.slice(0, 5) ?? ""}`;

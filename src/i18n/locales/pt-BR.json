@@ -1726,7 +1726,11 @@
       "addOverride": "Adicionar",
       "noOverrides": "Nenhum ajuste cadastrado.",
       "overrideSaved": "Ajuste salvo.",
-      "overrideMissing": "Informe a data e a quantidade."
+      "overrideMissing": "Informe a data e a quantidade.",
+      "startTime": "Início",
+      "endTime": "Fim",
+      "timePair": "Preencha início e fim do horário (ou deixe os dois em branco).",
+      "timeOrder": "O fim deve ser depois do início."
     },
     "financial": {
       "title": "Financeiro",

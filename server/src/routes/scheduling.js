@@ -76,19 +76,24 @@ router.get("/overrides", async (req, res) => {
   const where = conds.length ? `where ${conds.join(" and ")}` : "";
   const { rows } = await pool.query(
     `select id, restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType",
-            required_count as "requiredCount", reason
+            required_count as "requiredCount", reason,
+            to_char(start_time, 'HH24:MI') as "startTime", to_char(end_time, 'HH24:MI') as "endTime"
        from public.demand_overrides ${where} order by date asc`,
     vals,
   );
   res.json(rows);
 });
 
-// PUT /api/scheduling/overrides  { restaurantId, date, shiftType, requiredCount, reason }
+// PUT /api/scheduling/overrides  { restaurantId, date, shiftType, requiredCount, reason, startTime?, endTime? }
+// startTime/endTime (HH:MM) give an extra/intermediate shift its own hours; both or
+// neither — a lone one is ignored and falls back to the template times.
 router.put("/overrides", requireOps, async (req, res) => {
   const b = req.body || {};
   if (!b.restaurantId || !b.date || !b.shiftType || b.requiredCount == null) {
     return res.status(400).json({ error: "restaurantId, date, shiftType and requiredCount are required" });
   }
+  const startTime = b.startTime && b.endTime ? b.startTime : null;
+  const endTime = b.startTime && b.endTime ? b.endTime : null;
   // Previous demand for this slot — used to detect an increase (a vacancy opening).
   const prev = await one(
     `select required_count as n from public.demand_overrides
@@ -96,13 +101,15 @@ router.put("/overrides", requireOps, async (req, res) => {
     [b.restaurantId, b.date, b.shiftType],
   );
   const row = await one(
-    `insert into public.demand_overrides (restaurant_id, date, shift_type, required_count, reason, created_by)
-     values ($1,$2,$3,$4,$5,$6)
+    `insert into public.demand_overrides (restaurant_id, date, shift_type, required_count, reason, start_time, end_time, created_by)
+     values ($1,$2,$3,$4,$5,$6,$7,$8)
      on conflict (restaurant_id, date, shift_type)
-       do update set required_count = excluded.required_count, reason = excluded.reason
+       do update set required_count = excluded.required_count, reason = excluded.reason,
+                     start_time = excluded.start_time, end_time = excluded.end_time
      returning id, restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType",
-               required_count as "requiredCount", reason`,
-    [b.restaurantId, b.date, b.shiftType, b.requiredCount, b.reason ?? null, req.user.sub],
+               required_count as "requiredCount", reason,
+               to_char(start_time, 'HH24:MI') as "startTime", to_char(end_time, 'HH24:MI') as "endTime"`,
+    [b.restaurantId, b.date, b.shiftType, b.requiredCount, b.reason ?? null, startTime, endTime, req.user.sub],
   );
 
   // Raising demand for a special day can open vacancies on an already-published
@@ -329,7 +336,8 @@ router.get("/week", async (req, res) => {
       `select restaurant_id as "restaurantId", weekday, shift_type as "shiftType", required_count as n
          from public.restaurant_demand where restaurant_id = any($1)`, [restIds]),
     pool.query(
-      `select restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType", required_count as n
+      `select restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType", required_count as n,
+              to_char(start_time, 'HH24:MI') as "startTime", to_char(end_time, 'HH24:MI') as "endTime"
          from public.demand_overrides where restaurant_id = any($1) and date between $2 and $3`,
       [restIds, weekStart, weekEnd]),
     pool.query(
@@ -361,6 +369,14 @@ router.get("/week", async (req, res) => {
   }
   const baseMap = new Map(base.rows.map((r) => [`${r.restaurantId}|${r.weekday}|${r.shiftType}`, r.n]));
   const overrideMap = new Map(overrides.rows.map((r) => [`${r.restaurantId}|${r.date}|${r.shiftType}`, r.n]));
+  // A date override may carry its own hours (extra/intermediate shift). Surfaced per
+  // cell as `slotOverride` so the assign popover offers — and staffing uses — those hours.
+  const overrideTimeMap = new Map();
+  for (const r of overrides.rows) {
+    if (r.startTime && r.endTime) {
+      overrideTimeMap.set(`${r.restaurantId}|${r.date}|${r.shiftType}`, { startTime: r.startTime, endTime: r.endTime });
+    }
+  }
 
   const assignedBySlot = new Map(); // `${r}|${date}|${shift}` -> [assigned]
   for (const a of assigned.rows) {
@@ -407,6 +423,7 @@ router.get("/week", async (req, res) => {
         let candidateCount = 0;
         for (const uid of candidateSet) if (!assignedIds.has(uid)) candidateCount++;
         const { required, source } = requiredFromMaps(baseMap, overrideMap, r.id, date, weekday, shiftType);
+        const ovTime = overrideTimeMap.get(slotKey);
         return {
           date, weekday,
           required, requiredSource: source,
@@ -415,6 +432,7 @@ router.get("/week", async (req, res) => {
           deficit: required - cellAssigned.length,
           candidateCount,
           assigned: cellAssigned,
+          ...(ovTime ? { slotOverride: { label: null, startTime: ovTime.startTime, endTime: ovTime.endTime } } : {}),
         };
       });
       return { restaurantId: r.id, restaurantName: r.name, startTime, endTime, slots, cells };
@@ -466,6 +484,13 @@ router.post("/autofill", requireOps, async (req, res) => {
 
   const baseMap = new Map(base.rows.map((r) => [`${r.restaurantId}|${r.weekday}|${r.shiftType}`, r.n]));
   const overrideMap = new Map(overrides.rows.map((r) => [`${r.restaurantId}|${r.date}|${r.shiftType}`, r.n]));
+  // Per-date custom hours (extra/intermediate shift) — autofill uses them when set.
+  const overrideTimeMap = new Map();
+  for (const r of overrides.rows) {
+    if (r.startTime && r.endTime) {
+      overrideTimeMap.set(`${r.restaurantId}|${r.date}|${r.shiftType}`, { startTime: r.startTime, endTime: r.endTime });
+    }
+  }
 
   // Count of current assignments per slot + "busy" set (userId|date|shift) for conflict.
   const assignedCount = new Map();
@@ -519,6 +544,9 @@ router.post("/autofill", requireOps, async (req, res) => {
         if (have >= required) { filledSlots++; continue; }
         const cands = candidatesFor(r.id, date, shiftType);
         const weekendMandatory = isWeekendMandatory(weekday, shiftType);
+        const ovt = overrideTimeMap.get(slotKey);
+        const slotStart = ovt?.startTime ?? times.startTime;
+        const slotEnd = ovt?.endTime ?? times.endTime;
         for (const c of cands) {
           if (have >= required) break;
           const conflictKey = `${c.userId}|${date}|${shiftType}`;
@@ -529,7 +557,7 @@ router.post("/autofill", requireOps, async (req, res) => {
                  (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time,
                   status, is_weekend_mandatory, assigned_via, created_by)
                values ($1,$2,$3,$4,$5,$6,$7,'draft',$8,'coordinator',$9)`,
-              [cycleId, r.id, c.userId, date, shiftType, times.startTime, times.endTime, weekendMandatory, req.user.sub],
+              [cycleId, r.id, c.userId, date, shiftType, slotStart, slotEnd, weekendMandatory, req.user.sub],
             );
             busy.add(conflictKey);
             have++;

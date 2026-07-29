@@ -40,7 +40,7 @@ export type NotificationType =
   | "weekday_eligibility" | "manager_checkin_checkout" | "feedback_received"
   | "feedback_request" | "schedule_published" | "schedule_assigned" | "schedule_removed"
   | "shift_reminder" | "waitlist_opening" | "birthday" | "inactivity_warning"
-  | "profile_inactivated";
+  | "profile_inactivated" | "checkin_reminder";
 export type PayrollEntryType =
   | "shift_pay" | "weekend_bonus" | "late_discount" | "no_show_discount" | "manual_adjustment";
 

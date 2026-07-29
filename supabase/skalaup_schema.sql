@@ -1016,7 +1016,7 @@ alter table public.notifications add constraint notifications_type_check check (
   'weekday_eligibility','manager_checkin_checkout','feedback_received',
   'feedback_request','schedule_published','schedule_assigned','schedule_removed',
   'shift_reminder','waitlist_opening','birthday','inactivity_warning','profile_inactivated',
-  'extra_shift_invite','customer_rating'));
+  'extra_shift_invite','customer_rating','checkin_reminder'));
 
 -- =============================================================================
 -- ROW LEVEL SECURITY

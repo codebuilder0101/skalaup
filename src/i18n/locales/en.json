@@ -1368,7 +1368,9 @@
         "unsupported": "This device/browser doesn't support push notifications. Tip: install the app to your home screen first.",
         "deniedHint": "Notifications are blocked. Allow them in your browser settings to enable.",
         "deniedToast": "Notification permission denied.",
-        "error": "Couldn't enable notifications."
+        "error": "Couldn't enable notifications.",
+        "nudgeTitle": "Turn on mobile notifications",
+        "nudgeBody": "To get schedule alerts and the check-in reminder. On iPhone, add the app to your home screen first."
       },
       "score": {
         "title": "Scoring & stars",

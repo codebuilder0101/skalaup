@@ -380,6 +380,43 @@ export async function runCycleMaintenance() {
   return summary;
 }
 
+// Check-in reminder (client 2026-07-29): nudge each freelancer to do their check-in
+// as the shift approaches. Fires ONCE per assignment (deduped by the notifications
+// row), only for PUBLISHED shifts (draft escalas never fire), only when there's no
+// check-in yet, and only for shifts starting within the next ~20 min (to ~10 min
+// after start). Timezone-correct: the shift start is (date + start_time) evaluated
+// in the restaurant's timezone — the same expression the check-in endpoint uses (§4).
+async function remindCheckins() {
+  const { rows } = await pool.query(
+    `select a.id, a.user_id as "userId", a.shift_type as "shiftType",
+            to_char(a.start_time, 'HH24:MI') as "startHM", r.name as "restaurantName"
+       from public.schedule_assignments a
+       join public.restaurants r on r.id = a.restaurant_id
+      where a.status = 'published'
+        and a.date between current_date - 1 and current_date + 1
+        and extract(epoch from (
+              now() - ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo'))
+            )) / 60.0 between -20 and 10
+        and not exists (select 1 from public.shift_attendance sa
+                         where sa.assignment_id = a.id and sa.checkin_at is not null)
+        and not exists (select 1 from public.notifications n
+                         where n.type = 'checkin_reminder' and n.data->>'assignmentId' = a.id::text)`,
+  );
+  let sent = 0;
+  for (const a of rows) {
+    const shiftPt = a.shiftType === "lunch" ? "almoço" : "janta";
+    await notify({
+      recipientUserId: a.userId,
+      type: "checkin_reminder",
+      title: "Hora do check-in",
+      body: `Seu turno (${shiftPt}) em ${a.restaurantName} começa às ${a.startHM}. Faça seu check-in ao chegar.`,
+      data: { assignmentId: a.id, path: "/checkin" },
+    });
+    sent++;
+  }
+  return sent;
+}
+
 export function startScheduler() {
   // Once a day at 09:00 (server timezone). node-cron keeps it inside the pm2 process.
   cron.schedule("0 9 * * *", () => {
@@ -397,4 +434,13 @@ export function startScheduler() {
       .catch((e) => console.error("[scheduler] extra-shift invite expiry failed:", e.message));
   });
   console.log("[scheduler] extra-shift invite expiry scheduled (hourly)");
+
+  // Every 10 minutes: remind freelancers to check in as their shift approaches.
+  // The 20-min firing window is wider than this interval, so no shift is missed.
+  cron.schedule("*/10 * * * *", () => {
+    remindCheckins()
+      .then((n) => { if (n) console.log(`[scheduler] check-in reminders sent: ${n}`); })
+      .catch((e) => console.error("[scheduler] check-in reminder failed:", e.message));
+  });
+  console.log("[scheduler] check-in reminders scheduled (every 10 min)");
 }

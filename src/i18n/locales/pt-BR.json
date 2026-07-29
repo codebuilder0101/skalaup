@@ -1368,7 +1368,9 @@
         "unsupported": "Este dispositivo/navegador não suporta notificações push. Dica: instale o app na tela inicial primeiro.",
         "deniedHint": "As notificações estão bloqueadas. Libere nas configurações do navegador para ativar.",
         "deniedToast": "Permissão de notificação negada.",
-        "error": "Não foi possível ativar as notificações."
+        "error": "Não foi possível ativar as notificações.",
+        "nudgeTitle": "Ative as notificações no celular",
+        "nudgeBody": "Para receber os avisos de escala e o lembrete de check-in. No iPhone, adicione o app à tela inicial primeiro."
       },
       "score": {
         "title": "Pontuação e estrelas",

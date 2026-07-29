@@ -6,6 +6,7 @@ import {
   Copy, ExternalLink, RefreshCw, Trash2,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { EnablePushBanner } from "@/components/EnablePushBanner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -185,6 +186,7 @@ export default function MySchedulePage() {
   return (
     <AppLayout>
       <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5">
+        <EnablePushBanner />
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <CalendarDays className="w-6 h-6 text-primary" /> {t("skala.mySchedule.title")}

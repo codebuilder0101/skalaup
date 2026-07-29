@@ -89,6 +89,8 @@ export function notificationLink(n: AppNotification): string | null {
       return "/ratings";
     case "swap_request":
       return "/swaps";
+    case "checkin_reminder":
+      return "/checkin";
     case "manager_checkin_checkout":
     case "checkin_absence":
     case "third_late":

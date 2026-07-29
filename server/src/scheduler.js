@@ -417,6 +417,43 @@ async function remindCheckins() {
   return sent;
 }
 
+// Check-out reminder (client 2026-07-29): remind a freelancer to check OUT as the
+// shift ends. Only for PUBLISHED shifts that were CHECKED IN but not yet checked out,
+// firing once per assignment (deduped) in a window around end_time. Overnight-safe:
+// if end_time <= start_time the shift ends next day. Same restaurant-timezone math.
+async function remindCheckouts() {
+  const { rows } = await pool.query(
+    `select a.id, a.user_id as "userId", a.shift_type as "shiftType",
+            to_char(a.end_time, 'HH24:MI') as "endHM", r.name as "restaurantName"
+       from public.schedule_assignments a
+       join public.restaurants r on r.id = a.restaurant_id
+       join public.shift_attendance sa on sa.assignment_id = a.id
+      where a.status = 'published'
+        and a.date between current_date - 1 and current_date + 1
+        and sa.checkin_at is not null and sa.checkout_at is null
+        and extract(epoch from (
+              now() - (( a.date + a.end_time
+                         + case when a.end_time > a.start_time then interval '0' else interval '1 day' end
+                       ) at time zone coalesce(r.timezone, 'America/Sao_Paulo'))
+            )) / 60.0 between -5 and 40
+        and not exists (select 1 from public.notifications n
+                         where n.type = 'checkout_reminder' and n.data->>'assignmentId' = a.id::text)`,
+  );
+  let sent = 0;
+  for (const a of rows) {
+    const shiftPt = a.shiftType === "lunch" ? "almoço" : "janta";
+    await notify({
+      recipientUserId: a.userId,
+      type: "checkout_reminder",
+      title: "Hora do check-out",
+      body: `Seu turno (${shiftPt}) em ${a.restaurantName} termina às ${a.endHM}. Não esqueça de fazer o check-out.`,
+      data: { assignmentId: a.id, path: "/checkin" },
+    });
+    sent++;
+  }
+  return sent;
+}
+
 export function startScheduler() {
   // Once a day at 09:00 (server timezone). node-cron keeps it inside the pm2 process.
   cron.schedule("0 9 * * *", () => {
@@ -441,6 +478,9 @@ export function startScheduler() {
     remindCheckins()
       .then((n) => { if (n) console.log(`[scheduler] check-in reminders sent: ${n}`); })
       .catch((e) => console.error("[scheduler] check-in reminder failed:", e.message));
+    remindCheckouts()
+      .then((n) => { if (n) console.log(`[scheduler] check-out reminders sent: ${n}`); })
+      .catch((e) => console.error("[scheduler] check-out reminder failed:", e.message));
   });
-  console.log("[scheduler] check-in reminders scheduled (every 10 min)");
+  console.log("[scheduler] check-in/out reminders scheduled (every 10 min)");
 }

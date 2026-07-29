@@ -113,16 +113,17 @@ router.post("/", requireSchedulers, async (req, res) => {
       assignedVia = cyclePublished ? "waiting_list" : "coordinator";
     }
 
-    // Draft while building (published_at null, nothing to notify yet); published +
-    // queued-for-notify once the cycle is live. The publish endpoint flips any
-    // remaining drafts to published and notifies the affected freelancers.
+    // Draft while building (published_at null, nothing to notify yet). Once the
+    // cycle is live the shift is published immediately AND the freelancer is notified
+    // right away (below) — there is no upcoming publish to batch it into, so
+    // notify_pending stays false to avoid a duplicate alert on a later re-publish.
     const status = cyclePublished ? "published" : "draft";
     const row = await one(
       `insert into public.schedule_assignments
          (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time,
           status, is_weekend_mandatory, bonus_applied, assigned_via, created_by, published_at, notify_pending)
        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
-               case when $13 then now() else null end, $13)
+               case when $13 then now() else null end, false)
        returning ${COLS}`,
       [
         b.cycleId ?? null, b.restaurantId, b.userId, b.date, b.shiftType,
@@ -130,6 +131,22 @@ router.post("/", requireSchedulers, async (req, res) => {
         b.bonusApplied === true, assignedVia, req.user.sub, cyclePublished,
       ],
     );
+
+    // Added to an ALREADY-published escala → tell the freelancer now (client
+    // 2026-07-29: they must be notified when scheduled). The build→publish flow
+    // notifies at publish time instead, so a draft add stays silent until then.
+    if (cyclePublished) {
+      const rest = await one(`select name from public.restaurants where id = $1`, [b.restaurantId]);
+      const shiftPt = b.shiftType === "lunch" ? "almoço" : "janta";
+      const dateBr = `${b.date.slice(8, 10)}/${b.date.slice(5, 7)}`;
+      await notify({
+        recipientUserId: b.userId,
+        type: "schedule_published",
+        title: "Você foi escalado",
+        body: `Você foi escalado para o ${shiftPt} de ${dateBr} em ${rest?.name ?? "um restaurante"}.`,
+        data: { cycleId: b.cycleId ?? null, path: "/my-schedule" },
+      });
+    }
 
     // Weekday eligibility (§8.3): weekday shifts (Mon–Thu) require all 4 weekend
     // mandatory shifts of the preceding weekend — warn only, never block.

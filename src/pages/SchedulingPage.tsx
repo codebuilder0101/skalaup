@@ -1029,11 +1029,14 @@ export default function SchedulingPage() {
               )}
             </Card>
           </div>
-        ) : loading ? (
+        ) : loading && !board ? (
           <p className="text-sm text-muted-foreground">{t("skala.common.loading")}</p>
         ) : !board || board.shifts.length === 0 ? (
           <Card className="p-10 text-center text-muted-foreground">{t("skala.scheduleBuilder.noRestaurants")}</Card>
         ) : (
+          // Keep the grid mounted during a refresh (e.g. after assigning) so the
+          // horizontal scroll position is preserved — a full reload would remount it
+          // and jump the view back to day 1 (client 2026-07-29).
           <Card className="overflow-x-auto">
             <div style={{ minWidth: `${innerMinWidth}px` }}>
               {/* Header row */}

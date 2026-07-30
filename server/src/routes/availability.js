@@ -350,6 +350,12 @@ router.get("/submissions/slot", requireSchedulers, async (req, res) => {
        join public.users u on u.id = s.user_id
        left join public.freelancer_profiles p on p.user_id = s.user_id
       where s.cycle_id = $1 and s.date = $2 and s.shift_type = $3 and s.status = 'submitted'
+        -- Exclude anyone already assigned that date+shift (any restaurant): they can't
+        -- take a second shift, so they leave every other slot's list (client 2026-07-29).
+        and not exists (
+          select 1 from public.schedule_assignments c
+           where c.user_id = s.user_id and c.date = $2
+             and c.shift_type = $3 and c.status <> 'cancelled')
       group by s.cycle_id, s.user_id, s.shift_type, u.name,
                p.current_score, p.current_level, p.transport, p.experience, p.home_address
       order by "registeredHere" desc, score desc, u.name asc`,

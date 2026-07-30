@@ -221,7 +221,9 @@ router.get("/board", async (req, res) => {
       assignedCount: assigned.length,
       deficit: required - assigned.length,
       assigned,
-      candidates: candidates.filter((c) => !assignedIds.has(c.userId)),
+      // Hide anyone already assigned anywhere that date+shift (client 2026-07-29:
+      // a scheduled person leaves other restaurants' lists — no clash, no manual check).
+      candidates: candidates.filter((c) => !assignedIds.has(c.userId) && !c.conflicted),
     });
   }
 
@@ -256,7 +258,9 @@ router.get("/members", async (req, res) => {
       order by "registeredHere" desc, score desc, u.name asc`,
     [date, shiftType, restaurantId],
   );
-  res.json(rows.map((r) => ({ id: r.userId, ...r })));
+  // Drop anyone already assigned that date+shift (any restaurant) — they can't take
+  // another shift then, so they shouldn't appear in this restaurant's roster.
+  res.json(rows.filter((r) => !r.conflicted).map((r) => ({ id: r.userId, ...r })));
 });
 
 // ---- Weekly grid (§3.3) — rows grouped Shift → Restaurant, 7-day columns -----
@@ -379,10 +383,16 @@ router.get("/week", async (req, res) => {
   }
 
   const assignedBySlot = new Map(); // `${r}|${date}|${shift}` -> [assigned]
+  const busyByDateShift = new Map(); // `${date}|${shift}` -> Set(userId), assigned ANY restaurant
   for (const a of assigned.rows) {
     const k = `${a.restaurantId}|${a.date}|${a.shiftType}`;
     if (!assignedBySlot.has(k)) assignedBySlot.set(k, []);
     assignedBySlot.get(k).push(a);
+    // A person scheduled anywhere that date+shift can't work another restaurant then
+    // (client 2026-07-29) — so they must not count as available elsewhere.
+    const bk = `${a.date}|${a.shiftType}`;
+    if (!busyByDateShift.has(bk)) busyByDateShift.set(bk, new Set());
+    busyByDateShift.get(bk).add(a.userId);
   }
   const subsBySlot = new Map();     // `${r}|${date}|${shift}` -> Set(userId), restaurant-specific
   const anyByDateShift = new Map();  // `${date}|${shift}` -> Set(userId), "any restaurant" offers
@@ -415,13 +425,14 @@ router.get("/week", async (req, res) => {
         const cellAssigned = (assignedBySlot.get(slotKey) || [])
           .slice()
           .sort((a, b) => Number(b.score) - Number(a.score));
-        const assignedIds = new Set(cellAssigned.map((a) => a.userId));
         const subSet = subsBySlot.get(slotKey) || new Set();
         const anySet = anyByDateShift.get(`${date}|${shiftType}`) || new Set();
-        // Union of restaurant-specific + "any restaurant" offers, minus those already assigned here.
+        const busySet = busyByDateShift.get(`${date}|${shiftType}`) || new Set();
+        // Union of restaurant-specific + "any restaurant" offers, minus anyone already
+        // assigned anywhere that date+shift (here or another restaurant).
         const candidateSet = new Set([...subSet, ...anySet]);
         let candidateCount = 0;
-        for (const uid of candidateSet) if (!assignedIds.has(uid)) candidateCount++;
+        for (const uid of candidateSet) if (!busySet.has(uid)) candidateCount++;
         const { required, source } = requiredFromMaps(baseMap, overrideMap, r.id, date, weekday, shiftType);
         const ovTime = overrideTimeMap.get(slotKey);
         return {

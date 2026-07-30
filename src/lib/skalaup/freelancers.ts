@@ -133,6 +133,7 @@ export async function createFreelancer(input: FreelancerCreateInput): Promise<Re
 
 export type FreelancerUpdateInput = {
   name?: string;
+  email?: string;
   phone?: string | null;
   cpf?: string | null;
   pixKey?: string | null;
@@ -152,6 +153,12 @@ export async function setFreelancerStatus(
   userId: string, status: "active" | "inactive",
 ): Promise<Result<FreelancerWithProfile | null>> {
   return wrap(api.put<FreelancerWithProfile>(`/freelancers/${userId}/status`, { status }), null);
+}
+
+// Coordinator generates a new temporary password for a member (they lost access /
+// forgot). Returned once to share; the member must change it on next login.
+export async function resetFreelancerPassword(userId: string): Promise<Result<{ tempPassword: string } | null>> {
+  return wrap(api.post<{ tempPassword: string }>(`/freelancers/${userId}/reset-password`, {}), null);
 }
 
 export async function deleteFreelancer(userId: string): Promise<{ error: { message: string } | null }> {

@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { QRCodeCanvas } from "qrcode.react";
 import {
   Users, Star, Car, IdCard, KeyRound, Phone, MapPin, Plus, Pencil, Trash2, Mail, Copy, KeyRound as KeyIcon, Store, UserCheck,
-  QrCode, Download, Printer,
+  QrCode, Download, Printer, Loader2,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   listFreelancers, createFreelancer, updateFreelancer, deleteFreelancer, setFreelancerStatus,
+  resetFreelancerPassword,
   listAuthorizedEmails, addAuthorizedEmail, removeAuthorizedEmail, listGrantableRoles,
   type FreelancerWithProfile, type AuthorizedEmail, type AuthorizedRole,
 } from "@/lib/skalaup/freelancers";
@@ -66,6 +67,7 @@ export default function FreelancersPage() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [tempPwd, setTempPwd] = useState<string | null>(null);
+  const [resettingPwd, setResettingPwd] = useState(false);
 
   // Self-registration allow-list (client 2026-07-19, extended 2026-07-20): an administrator
   // pre-registers an email TOGETHER WITH the role that person will hold; they then sign
@@ -197,7 +199,8 @@ export default function FreelancersPage() {
 
   const save = async () => {
     if (!form.name.trim()) { toast.error(t("skala.freelancers.nameRequired")); return; }
-    if (!form.id && !form.email.trim()) { toast.error(t("skala.freelancers.emailRequired")); return; }
+    if (!form.email.trim()) { toast.error(t("skala.freelancers.emailRequired")); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { toast.error(t("skala.auth.invalidEmail")); return; }
     if (form.cpf && !isValidCpf(form.cpf)) { toast.error(t("skala.auth.invalidCpf")); return; }
     if (form.phone && !isValidPhone(form.phone)) { toast.error(t("skala.auth.invalidPhone")); return; }
     if (form.whatsapp && !isValidPhone(form.whatsapp)) { toast.error(t("skala.auth.invalidWhatsapp")); return; }
@@ -206,6 +209,7 @@ export default function FreelancersPage() {
     setSaving(true);
     const payload = {
       name: form.name.trim(),
+      email: form.email.trim().toLowerCase(),
       phone: form.phone.trim() || null,
       cpf: form.cpf.trim() || null,
       pixKey: form.pixKey.trim() || null,
@@ -229,7 +233,7 @@ export default function FreelancersPage() {
       setSaving(false);
       toast.success(t("skala.common.updated"));
     } else {
-      const { data, error } = await createFreelancer({ ...payload, email: form.email.trim() });
+      const { data, error } = await createFreelancer(payload);
       setSaving(false);
       if (error) { toast.error(error.message); return; }
       toast.success(t("skala.common.created"));
@@ -238,6 +242,17 @@ export default function FreelancersPage() {
     }
     setDialogOpen(false);
     void load();
+  };
+
+  // Generate a fresh temporary password for this member and show it once (the app
+  // sends no e-mail, so this IS the "reset": hand the new password over).
+  const resetPassword = async () => {
+    if (!form.id) return;
+    setResettingPwd(true);
+    const { data, error } = await resetFreelancerPassword(form.id);
+    setResettingPwd(false);
+    if (error) { toast.error(error.message); return; }
+    if (data?.tempPassword) setTempPwd(data.tempPassword);
   };
 
   const openScore = (f: FreelancerWithProfile) => {
@@ -560,13 +575,12 @@ export default function FreelancersPage() {
               <Input
                 type="email"
                 value={form.email}
-                disabled={!!form.id}
                 placeholder="email@exemplo.com"
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
-              {!form.id && (
-                <p className="text-[11px] text-muted-foreground">{t("skala.freelancers.emailHint")}</p>
-              )}
+              <p className="text-[11px] text-muted-foreground">
+                {form.id ? t("skala.freelancers.emailEditHint") : t("skala.freelancers.emailHint")}
+              </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -613,11 +627,18 @@ export default function FreelancersPage() {
               <Input value={form.homeCep} inputMode="numeric" placeholder="00000-000"
                 onChange={(e) => setForm({ ...form, homeCep: maskCep(e.target.value) })} />
             </div>
-            {/* Active/inactive toggle (R17) — mirrors the client toggle. Editing only. */}
+            {/* Editing only: active toggle (R17) + password reset (client 2026-07-29). */}
             {form.id && (
-              <div className="flex items-center gap-2 pt-3 border-t">
-                <Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} />
-                <Label>{t("skala.common.active")}</Label>
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
+                <div className="flex items-center gap-2">
+                  <Switch checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} />
+                  <Label>{t("skala.common.active")}</Label>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="gap-1.5"
+                  onClick={() => void resetPassword()} disabled={resettingPwd}>
+                  {resettingPwd ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+                  {t("skala.freelancers.resetPassword")}
+                </Button>
               </div>
             )}
           </div>

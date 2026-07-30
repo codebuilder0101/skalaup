@@ -190,9 +190,24 @@ router.put("/:id", async (req, res) => {
   let i = 1;
   if (b.name !== undefined) { uSets.push(`name = $${i++}`); uVals.push(String(b.name).trim()); }
   if (b.phone !== undefined) { uSets.push(`phone = $${i++}`); uVals.push(b.phone ? String(b.phone).trim() : null); }
+  // Editable login e-mail (client 2026-07-29: a member who lost access to their email
+  // needs it changed). Validate format; the unique constraint guards collisions.
+  if (b.email !== undefined) {
+    const email = String(b.email).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "E-mail inválido." });
+    }
+    uSets.push(`email = $${i++}`); uVals.push(email);
+  }
   if (uSets.length) {
     uVals.push(req.params.id);
-    await pool.query(`update public.users set ${uSets.join(", ")} where id = $${i}`, uVals);
+    try {
+      await pool.query(`update public.users set ${uSets.join(", ")} where id = $${i}`, uVals);
+    } catch (e) {
+      if (String(e.code) === "23505") return res.status(409).json({ error: "Este e-mail já está em uso." });
+      console.error("update user error:", e.message);
+      return res.status(500).json({ error: "Falha ao salvar." });
+    }
   }
 
   // Only touch the profile when at least one ficha field is present (avoid wiping).
@@ -219,6 +234,26 @@ router.put("/:id", async (req, res) => {
   const row = await one(`${SELECT} where u.id = $1`, [req.params.id]);
   if (!row) return res.status(404).json({ error: "Not found" });
   res.json(row);
+});
+
+// POST /:id/reset-password — coordinator/administrator generates a NEW temporary
+// password (the app sends no e-mail, so a reset = a fresh temp password to hand over).
+// Forces a change on next login. Returned once so the coordinator can share it.
+router.post("/:id/reset-password", requireOps, async (req, res) => {
+  try {
+    const password = tempPassword();
+    const hash = await bcrypt.hash(password, 10);
+    const u = await one(
+      `update public.users set password = $2, must_change_password = true
+        where id = $1 and role in ('freelancer','visitor') returning id`,
+      [req.params.id, hash],
+    );
+    if (!u) return res.status(404).json({ error: "Not found" });
+    res.json({ tempPassword: password });
+  } catch (e) {
+    console.error("reset password error:", e.message);
+    res.status(500).json({ error: "Falha ao redefinir a senha." });
+  }
 });
 
 // GET /:id/ratings — public (QR) rating summary for a freelancer (R2 item 5).

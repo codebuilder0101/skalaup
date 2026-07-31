@@ -985,9 +985,6 @@ export default function SchedulingPage() {
                         ? <Sun className="w-4 h-4 text-amber-500" />
                         : <Moon className="w-4 h-4 text-indigo-500" />}
                       {t(`skala.scheduleBuilder.shift.${s.shiftType}`)}
-                      <span className="text-muted-foreground font-normal text-xs">
-                        {s.rows[0]?.row.startTime?.slice(0, 5)}–{s.rows[0]?.row.endTime?.slice(0, 5)}
-                      </span>
                     </div>
                     {s.rows.map(({ row, cell }) => {
                       const mayEditRow = scope.canEditAll || scope.ids.has(row.restaurantId);
@@ -996,9 +993,12 @@ export default function SchedulingPage() {
                       const rowCanFill = published && mayEditRow;
                       const readOnlyForManager = canEdit && !mayEditRow;
                       return (
-                        <div key={row.restaurantId} className="space-y-1">
+                        <div key={`${row.restaurantId}-${row.startTime}-${row.endTime}`} className="space-y-1">
                           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                             <span className="truncate">{row.restaurantName}</span>
+                            <span className="text-[11px] font-normal text-muted-foreground/80">
+                              · {row.slotLabel ? `${row.slotLabel} ` : ""}{row.startTime?.slice(0, 5)}–{row.endTime?.slice(0, 5)}
+                            </span>
                             {readOnlyForManager && (
                               <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
                                 {t("skala.scheduleBuilder.readOnly")}
@@ -1065,9 +1065,6 @@ export default function SchedulingPage() {
                         ? <Sun className="w-3.5 h-3.5 text-amber-500" />
                         : <Moon className="w-3.5 h-3.5 text-indigo-500" />}
                       {t(`skala.scheduleBuilder.shift.${sg.shiftType}`)}
-                      <span className="text-muted-foreground font-normal">
-                        {sg.restaurants[0]?.startTime?.slice(0, 5)}–{sg.restaurants[0]?.endTime?.slice(0, 5)}
-                      </span>
                     </div>
                   </div>
                   {sg.restaurants.map((row) => {
@@ -1078,18 +1075,26 @@ export default function SchedulingPage() {
                     const rowCanFill = published && mayEditRow;
                     const readOnlyForManager = canEdit && !mayEditRow;
                     return (
-                      <div key={row.restaurantId} className="grid border-b border-border" style={gridCols}>
-                        <div className="p-2 flex items-center gap-1.5 text-sm font-medium text-foreground bg-muted/10">
-                          <span className="truncate">{row.restaurantName}</span>
-                          {readOnlyForManager && (
-                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
-                              {t("skala.scheduleBuilder.readOnly")}
-                            </span>
+                      <div key={`${row.restaurantId}-${row.startTime}-${row.endTime}`} className="grid border-b border-border" style={gridCols}>
+                        <div className="p-2 text-sm bg-muted/10">
+                          {row.isPeriodLead && (
+                            <div className="flex items-center gap-1.5 font-medium text-foreground">
+                              <span className="truncate">{row.restaurantName}</span>
+                              {readOnlyForManager && (
+                                <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
+                                  {t("skala.scheduleBuilder.readOnly")}
+                                </span>
+                              )}
+                            </div>
                           )}
+                          {/* This row = one named shift slot, with its own time. */}
+                          <div className="text-[11px] text-muted-foreground truncate">
+                            {row.slotLabel ? `${row.slotLabel} · ` : ""}{row.startTime?.slice(0, 5)}–{row.endTime?.slice(0, 5)}
+                          </div>
                         </div>
                         {row.cells.map((cell) => (
                           <ScheduleCell
-                            key={`${row.restaurantId}-${cell.date}`}
+                            key={`${row.restaurantId}-${row.startTime}-${cell.date}`}
                             cell={cell}
                             restaurantId={row.restaurantId}
                             shiftType={sg.shiftType}

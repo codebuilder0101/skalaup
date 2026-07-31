@@ -125,9 +125,14 @@ export interface ShiftSlot {
 export interface WeekRestaurantRow {
   restaurantId: string;
   restaurantName: string;
-  startTime: string; // primary (earliest) slot, for the group header
+  // Each row is now ONE named shift slot of the restaurant (per-slot grid).
+  slotLabel: string | null;
+  startTime: string; // this slot's time window
   endTime: string;
-  slots: ShiftSlot[];
+  // First slot row of a (restaurant, shift_type) period — carries the per-period
+  // demand/deficit + candidate count (demand stays per meal period).
+  isPeriodLead: boolean;
+  slots: ShiftSlot[]; // always this one slot (kept for the assign popover shape)
   cells: WeekCell[];
 }
 

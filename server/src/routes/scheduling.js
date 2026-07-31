@@ -347,7 +347,9 @@ router.get("/week", async (req, res) => {
     pool.query(
       `select a.id as "assignmentId", a.restaurant_id as "restaurantId", a.date::text as date,
               a.shift_type as "shiftType", a.user_id as "userId", u.name, a.status,
-              a.assigned_via as "assignedVia", coalesce(p.current_score,0) as score, p.current_level as level
+              a.assigned_via as "assignedVia", coalesce(p.current_score,0) as score, p.current_level as level,
+              a.bonus_applied as "bonusApplied",
+              to_char(a.start_time, 'HH24:MI') as "startTime", to_char(a.end_time, 'HH24:MI') as "endTime"
          from public.schedule_assignments a
          join public.users u on u.id = a.user_id
          left join public.freelancer_profiles p on p.user_id = a.user_id
@@ -411,42 +413,70 @@ router.get("/week", async (req, res) => {
   const SHIFTS = ["lunch", "dinner"];
   const DEFAULT_TIMES = { lunch: { s: "12:00", e: "16:00" }, dinner: { s: "18:00", e: "22:00" } };
 
+  // Each named shift slot (template time) is its own grid ROW (client 2026-07-31):
+  // "1º turno 12:00-20:20", "2º turno 13:00-21:20"… instead of one collapsed Almoço
+  // row with a time picker. Demand/deficit and the candidate pool stay per meal
+  // period → shown on the FIRST slot row of the period (isPeriodLead). Assignments
+  // are bucketed into their slot by (start,end) time; any assignment whose time
+  // matches no template slot gets its own ad-hoc row so it never disappears.
   const shifts = SHIFTS.map((shiftType) => ({
     shiftType,
-    restaurants: restaurants.map((r) => {
-      const slotsRaw = tplByKey.get(`${r.id}|${shiftType}`) || [];
-      const slots = slotsRaw.length
-        ? slotsRaw
-        : [{ label: null, startTime: DEFAULT_TIMES[shiftType].s, endTime: DEFAULT_TIMES[shiftType].e }];
-      const startTime = slots[0].startTime;
-      const endTime = slots[0].endTime;
-      const cells = days.map(({ date, weekday }) => {
-        const slotKey = `${r.id}|${date}|${shiftType}`;
-        const cellAssigned = (assignedBySlot.get(slotKey) || [])
-          .slice()
-          .sort((a, b) => Number(b.score) - Number(a.score));
-        const subSet = subsBySlot.get(slotKey) || new Set();
-        const anySet = anyByDateShift.get(`${date}|${shiftType}`) || new Set();
-        const busySet = busyByDateShift.get(`${date}|${shiftType}`) || new Set();
-        // Union of restaurant-specific + "any restaurant" offers, minus anyone already
-        // assigned anywhere that date+shift (here or another restaurant).
-        const candidateSet = new Set([...subSet, ...anySet]);
-        let candidateCount = 0;
-        for (const uid of candidateSet) if (!busySet.has(uid)) candidateCount++;
-        const { required, source } = requiredFromMaps(baseMap, overrideMap, r.id, date, weekday, shiftType);
-        const ovTime = overrideTimeMap.get(slotKey);
+    restaurants: restaurants.flatMap((r) => {
+      const templateSlots = tplByKey.get(`${r.id}|${shiftType}`) || [];
+      const tmplTimes = new Set(templateSlots.map((s) => `${s.startTime}|${s.endTime}`));
+      const adhoc = new Map();
+      for (const { date } of days) {
+        for (const a of assignedBySlot.get(`${r.id}|${date}|${shiftType}`) || []) {
+          const key = `${a.startTime}|${a.endTime}`;
+          if (!tmplTimes.has(key) && !adhoc.has(key)) {
+            adhoc.set(key, { label: null, startTime: a.startTime, endTime: a.endTime });
+          }
+        }
+      }
+      let slotRows = [...templateSlots, ...adhoc.values()];
+      if (!slotRows.length) {
+        slotRows = [{ label: null, startTime: DEFAULT_TIMES[shiftType].s, endTime: DEFAULT_TIMES[shiftType].e }];
+      }
+      return slotRows.map((slot, si) => {
+        const isPeriodLead = si === 0;
+        const cells = days.map(({ date, weekday }) => {
+          const periodKey = `${r.id}|${date}|${shiftType}`;
+          const periodAssigned = assignedBySlot.get(periodKey) || [];
+          const cellAssigned = periodAssigned
+            .filter((a) => a.startTime === slot.startTime && a.endTime === slot.endTime)
+            .slice()
+            .sort((a, b) => Number(b.score) - Number(a.score));
+          const { required, source } = requiredFromMaps(baseMap, overrideMap, r.id, date, weekday, shiftType);
+          let candidateCount = 0;
+          if (isPeriodLead) {
+            const subSet = subsBySlot.get(periodKey) || new Set();
+            const anySet = anyByDateShift.get(`${date}|${shiftType}`) || new Set();
+            const busySet = busyByDateShift.get(`${date}|${shiftType}`) || new Set();
+            const candidateSet = new Set([...subSet, ...anySet]);
+            for (const uid of candidateSet) if (!busySet.has(uid)) candidateCount++;
+          }
+          const ovTime = isPeriodLead ? overrideTimeMap.get(periodKey) : undefined;
+          return {
+            date, weekday,
+            // required is the per-period demand, carried on EVERY slot row so each
+            // named slot stays visible/staffable; the deficit is shown on the lead row.
+            required, requiredSource: source,
+            isWeekendMandatory: isWeekendMandatory(weekday, shiftType),
+            assignedCount: cellAssigned.length,
+            // Deficit is the period's shortfall (required − everyone assigned across all
+            // slots that day), surfaced on the lead row only.
+            deficit: isPeriodLead ? (required - periodAssigned.length) : 0,
+            candidateCount,
+            assigned: cellAssigned,
+            ...(ovTime ? { slotOverride: { label: null, startTime: ovTime.startTime, endTime: ovTime.endTime } } : {}),
+          };
+        });
         return {
-          date, weekday,
-          required, requiredSource: source,
-          isWeekendMandatory: isWeekendMandatory(weekday, shiftType),
-          assignedCount: cellAssigned.length,
-          deficit: required - cellAssigned.length,
-          candidateCount,
-          assigned: cellAssigned,
-          ...(ovTime ? { slotOverride: { label: null, startTime: ovTime.startTime, endTime: ovTime.endTime } } : {}),
+          restaurantId: r.id, restaurantName: r.name,
+          slotLabel: slot.label, startTime: slot.startTime, endTime: slot.endTime,
+          slots: [slot], isPeriodLead, cells,
         };
       });
-      return { restaurantId: r.id, restaurantName: r.name, startTime, endTime, slots, cells };
     }),
   }));
 

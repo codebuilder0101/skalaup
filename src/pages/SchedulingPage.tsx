@@ -710,6 +710,17 @@ export default function SchedulingPage() {
   const canEdit = !!cycle && !published;
   const today = todayIso();
 
+  // How many scheduled shifts are still DRAFT (not published) — freelancers don't
+  // see these until the coordinator clicks Publicar. Surfaced so it's obvious there
+  // are unpublished changes (client 2026-08-04).
+  const draftCount = useMemo(() => {
+    let n = 0;
+    board?.shifts.forEach((sg) => sg.restaurants.forEach((r) => r.cells.forEach((c) => {
+      for (const a of c.assigned) if (a.status === "draft") n++;
+    })));
+    return n;
+  }, [board]);
+
   // The day shown in the compact day view — defaults to today until the user
   // taps another date on the calendar.
   const activeDay = selectedDay ?? today;
@@ -825,6 +836,16 @@ export default function SchedulingPage() {
                       {t(`skala.scheduleBuilder.cycleStatus.${cycle.status}`)}
                     </Badge>
                   )}
+                  {draftCount > 0 && (
+                    <Badge
+                      variant="outline"
+                      title={t("skala.scheduleBuilder.unpublishedHint")}
+                      className="gap-1.5 rounded-full border-amber-400/40 bg-amber-400/10 px-2.5 py-0.5 font-medium text-amber-600 dark:text-amber-400"
+                    >
+                      <AlertTriangle className="h-3 w-3" />
+                      {t("skala.scheduleBuilder.unpublishedCount", { count: draftCount })}
+                    </Badge>
+                  )}
                 </div>
                 <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
                   {t("skala.scheduleBuilder.subtitle")}
@@ -898,12 +919,13 @@ export default function SchedulingPage() {
               )}
 
               <Button
-                className="rounded-xl shadow-md shadow-primary/25"
+                className={`rounded-xl shadow-md shadow-primary/25 ${draftCount > 0 ? "ring-2 ring-amber-400/60" : ""}`}
                 onClick={() => void onPublish()}
                 disabled={busy || !cycle}
               >
                 <Send className="mr-1.5 h-4 w-4" />
                 {published ? t("skala.scheduleBuilder.publishChanges") : t("skala.scheduleBuilder.publish")}
+                {draftCount > 0 && ` (${draftCount})`}
               </Button>
             </div>
           </div>

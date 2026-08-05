@@ -81,6 +81,14 @@ function Stars({ level }: { level: number | null }) {
   );
 }
 
+// Assigned-chip colour by publish status (client 2026-08-04): a DRAFT (not yet
+// published, invisible to the freelancer) shows amber/orange; a PUBLISHED shift
+// shows green — so the coordinator sees at a glance what still needs publishing.
+const assignedChipClass = (status: string) =>
+  status === "draft"
+    ? "bg-amber-400/25 ring-1 ring-amber-500/30"
+    : "bg-emerald-500/10";
+
 // ---- One grid cell (restaurant × shift × day) with assign popover ----------
 function ScheduleCell({
   cell, restaurantId, shiftType, startTime, endTime, slots, cycleId, isToday, busyUserIds, canEdit, canFill, published, onChanged,
@@ -288,7 +296,7 @@ function ScheduleCell({
       </div>
       <div className="space-y-0.5">
         {cell.assigned.map((a) => (
-          <div key={a.assignmentId} className="flex items-center gap-1 rounded bg-emerald-500/10 px-1 py-0.5">
+          <div key={a.assignmentId} className={`flex items-center gap-1 rounded px-1 py-0.5 ${assignedChipClass(a.status)}`}>
             <span className="text-[11px] text-foreground truncate flex-1">{a.name?.split(" ")[0]}</span>
             <span className="text-[9px] text-muted-foreground">{Number(a.score).toFixed(0)}</span>
           </div>
@@ -331,7 +339,7 @@ function ScheduleCell({
       {cell.assigned.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {cell.assigned.map((a) => (
-            <span key={a.assignmentId} className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5">
+            <span key={a.assignmentId} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${assignedChipClass(a.status)}`}>
               <span className="text-[11px] text-foreground">{a.name?.split(" ")[0]}</span>
               <span className="text-[9px] text-muted-foreground">{Number(a.score).toFixed(0)}</span>
             </span>
@@ -392,6 +400,11 @@ function ScheduleCell({
               <span className="text-sm flex items-center gap-1.5 truncate">
                 {a.name} <Stars level={a.level} />
                 <span className="text-[10px] text-muted-foreground">{Number(a.score).toFixed(1)}</span>
+                {a.status === "draft" && (
+                  <Badge variant="outline" className="shrink-0 border-amber-400/40 bg-amber-400/10 text-[9px] text-amber-600 dark:text-amber-400">
+                    {t("skala.scheduleBuilder.draftTag")}
+                  </Badge>
+                )}
               </span>
               <div className="flex items-center gap-1 shrink-0">
                 {canRemove && (
@@ -959,6 +972,8 @@ export default function SchedulingPage() {
               <span className="flex items-center gap-1"><Moon className="w-3.5 h-3.5 text-indigo-500" />{t("skala.scheduleBuilder.shift.dinner")}</span>
               <span className="flex items-center gap-1"><Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />{t("skala.scheduleBuilder.bonusShift")}</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-destructive inline-block" />{t("skala.scheduleBuilder.legendDeficit")}</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/40 inline-block" />{t("skala.scheduleBuilder.legendPublished")}</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400/60 inline-block" />{t("skala.scheduleBuilder.legendUnpublished")}</span>
             </div>
           </div>
         </Card>

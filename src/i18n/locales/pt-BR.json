@@ -1888,6 +1888,9 @@
       "noDemand": "Sem demanda neste dia.",
       "pendingN": "{{n}} pendente(s)",
       "legendDeficit": "Déficit",
+      "legendPublished": "Publicado",
+      "legendUnpublished": "Não publicado",
+      "draftTag": "rascunho",
       "readOnly": "Somente leitura",
       "autopilot": "Autopilot",
       "autopilotResult": "Autopilot: {{filled}} escalados · {{short}} ainda faltando · {{skipped}} conflitos ignorados"

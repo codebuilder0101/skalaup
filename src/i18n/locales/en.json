@@ -1888,6 +1888,9 @@
       "noDemand": "No demand on this day.",
       "pendingN": "{{n}} pending",
       "legendDeficit": "Deficit",
+      "legendPublished": "Published",
+      "legendUnpublished": "Unpublished",
+      "draftTag": "draft",
       "readOnly": "Read-only",
       "autopilot": "Autopilot",
       "autopilotResult": "Autopilot: {{filled}} assigned · {{short}} still short · {{skipped}} conflicts skipped"

@@ -4,7 +4,7 @@
 // Driven by a daily cron job; also exposed as runCycleMaintenance() for manual runs.
 import cron from "node-cron";
 import { pool, one } from "./db.js";
-import { notify, coordinatorIds } from "./notify.js";
+import { notify, notifyMany, coordinatorIds } from "./notify.js";
 import { weekdayOf } from "./scheduleRules.js";
 import { expireExtraShiftInvites } from "./routes/extraShifts.js";
 
@@ -454,6 +454,44 @@ async function remindCheckouts() {
   return sent;
 }
 
+// Missing-check-in alert (client 2026-08-04, priority): when a freelancer with a
+// PUBLISHED shift hasn't checked in ~15 min after it started — and it isn't already
+// a check-in or a no-show — alert coordinators + admins ONCE so they can chase or
+// regularize. Restaurant-timezone-correct (same expression as the check-in endpoint).
+async function alertMissingCheckins() {
+  const { rows } = await pool.query(
+    `select a.id, a.shift_type as "shiftType", to_char(a.start_time, 'HH24:MI') as "startHM",
+            u.name as "freelancerName", r.name as "restaurantName"
+       from public.schedule_assignments a
+       join public.users u on u.id = a.user_id
+       join public.restaurants r on r.id = a.restaurant_id
+      where a.status = 'published'
+        and a.date between current_date - 1 and current_date + 1
+        and extract(epoch from (
+              now() - ((a.date + a.start_time) at time zone coalesce(r.timezone, 'America/Sao_Paulo'))
+            )) / 60.0 between 15 and 60
+        and not exists (select 1 from public.shift_attendance sa
+                         where sa.assignment_id = a.id and (sa.checkin_at is not null or sa.no_show = true))
+        and not exists (select 1 from public.notifications n
+                         where n.type = 'checkin_absence' and n.data->>'assignmentId' = a.id::text)`,
+  );
+  if (!rows.length) return 0;
+  const ids = await coordinatorIds(); // coordinators + administrators
+  if (!ids.length) return 0;
+  let sent = 0;
+  for (const a of rows) {
+    const shiftPt = a.shiftType === "lunch" ? "almoço" : "janta";
+    await notifyMany(ids, () => ({
+      type: "checkin_absence",
+      title: "Falta de check-in",
+      body: `${a.freelancerName} não fez check-in no ${shiftPt} das ${a.startHM} em ${a.restaurantName}.`,
+      data: { assignmentId: a.id, path: "/attendance" },
+    }));
+    sent++;
+  }
+  return sent;
+}
+
 export function startScheduler() {
   // Once a day at 09:00 (server timezone). node-cron keeps it inside the pm2 process.
   cron.schedule("0 9 * * *", () => {
@@ -481,6 +519,9 @@ export function startScheduler() {
     remindCheckouts()
       .then((n) => { if (n) console.log(`[scheduler] check-out reminders sent: ${n}`); })
       .catch((e) => console.error("[scheduler] check-out reminder failed:", e.message));
+    alertMissingCheckins()
+      .then((n) => { if (n) console.log(`[scheduler] missing check-in alerts: ${n}`); })
+      .catch((e) => console.error("[scheduler] missing check-in alert failed:", e.message));
   });
-  console.log("[scheduler] check-in/out reminders scheduled (every 10 min)");
+  console.log("[scheduler] check-in/out + missing-check-in alerts scheduled (every 10 min)");
 }

@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { EnablePushBanner } from "@/components/EnablePushBanner";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -274,6 +275,7 @@ export default function Index() {
   return (
     <AppLayout>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <EnablePushBanner />
         <div>
           <h1 className="text-2xl font-bold text-foreground">
             {t("skala.dashboard.welcome", { name: user?.name ?? "" })}

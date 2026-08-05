@@ -1872,6 +1872,8 @@
       "eligibilityWarning": "Escalado, mas este membro da equipe não está confirmado nos 4 turnos do fim de semana anterior (elegibilidade de turno de semana).",
       "publish": "Publicar escala",
       "publishChanges": "Publicar alterações",
+      "publishRestaurant": "Publicar {{name}}",
+      "publishConfirmRestaurant": "Publicar só a escala de {{name}}? Apenas os freelancers desse restaurante serão notificados.",
       "unpublishedCount_one": "{{count}} não publicado",
       "unpublishedCount_other": "{{count}} não publicados",
       "unpublishedHint": "Turnos ainda não publicados — os freelancers só veem depois que você clicar em Publicar.",

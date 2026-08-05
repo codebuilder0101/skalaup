@@ -39,6 +39,8 @@ export async function setAssignmentBonus(id: string, bonusApplied: boolean): Pro
   return voidWrap(api.put(`/assignments/${id}/bonus`, { bonusApplied }));
 }
 
-export async function publishCycle(cycleId: string): Promise<{ error: { message: string } | null }> {
-  return voidWrap(api.post(`/assignments/publish`, { cycleId }));
+// restaurantId scopes the publish to one restaurant (used when the escala is
+// filtered); omit/null to publish the whole cycle.
+export async function publishCycle(cycleId: string, restaurantId?: string | null): Promise<{ error: { message: string } | null }> {
+  return voidWrap(api.post(`/assignments/publish`, { cycleId, restaurantId: restaurantId ?? null }));
 }

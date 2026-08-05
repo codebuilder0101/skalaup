@@ -1872,6 +1872,8 @@
       "eligibilityWarning": "Assigned, but this team member is not confirmed for all 4 weekend shifts of the previous weekend (weekday eligibility).",
       "publish": "Publish schedule",
       "publishChanges": "Publish changes",
+      "publishRestaurant": "Publish {{name}}",
+      "publishConfirmRestaurant": "Publish only {{name}}'s schedule? Only that restaurant's freelancers will be notified.",
       "unpublishedCount_one": "{{count}} unpublished",
       "unpublishedCount_other": "{{count}} unpublished",
       "unpublishedHint": "Shifts not published yet — freelancers only see them after you click Publish.",

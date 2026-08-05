@@ -276,19 +276,26 @@ router.delete("/:id", requireSchedulers, async (req, res) => {
 router.post("/publish", requireSchedulers, async (req, res) => {
   const cycleId = (req.body || {}).cycleId;
   if (!cycleId) return res.status(400).json({ error: "cycleId is required" });
+  // Optional restaurant scope (client 2026-08-04): when the escala is filtered to one
+  // restaurant, publish ONLY that restaurant's drafts and notify only its freelancers.
+  const restaurantId = (req.body || {}).restaurantId || null;
 
-  // Any draft rows (bulk auto-generate) become published and get queued for notify.
+  // Draft rows become published and get queued for notify (scoped if a restaurant).
   await pool.query(
     `update public.schedule_assignments
        set status = 'published', published_at = now(), notify_pending = true
-     where cycle_id = $1 and status = 'draft'`,
-    [cycleId],
+     where cycle_id = $1 and status = 'draft' and ($2::uuid is null or restaurant_id = $2)`,
+    [cycleId, restaurantId],
   );
 
-  await pool.query(
-    `update public.availability_cycles set status = 'published', published_at = now() where id = $1`,
-    [cycleId],
-  );
+  // Mark the whole CYCLE published only on a FULL publish — a per-restaurant publish
+  // leaves the cycle open so the coordinator can keep building the other restaurants.
+  if (!restaurantId) {
+    await pool.query(
+      `update public.availability_cycles set status = 'published', published_at = now() where id = $1`,
+      [cycleId],
+    );
+  }
 
   // Everyone with a pending change: additions (now published) and/or removals
   // (cancelled + announceable). Unchanged freelancers have no pending rows → silent.
@@ -297,9 +304,9 @@ router.post("/publish", requireSchedulers, async (req, res) => {
             count(*) filter (where status = 'published') as added,
             count(*) filter (where status = 'cancelled') as removed
        from public.schedule_assignments
-      where cycle_id = $1 and notify_pending = true
+      where cycle_id = $1 and notify_pending = true and ($2::uuid is null or restaurant_id = $2)
       group by user_id`,
-    [cycleId],
+    [cycleId, restaurantId],
   );
 
   for (const c of changed) {
@@ -317,16 +324,18 @@ router.post("/publish", requireSchedulers, async (req, res) => {
     });
   }
 
-  // Clear the queue so a later re-publish only touches the NEXT round of changes.
+  // Clear the queue (scoped) so a later re-publish only touches the NEXT changes.
   await pool.query(
     `update public.schedule_assignments set notify_pending = false
-      where cycle_id = $1 and notify_pending = true`,
-    [cycleId],
+      where cycle_id = $1 and notify_pending = true and ($2::uuid is null or restaurant_id = $2)`,
+    [cycleId, restaurantId],
   );
 
-  // Publishing with gaps is allowed (§ trainees / not enough people yet). Any slot
-  // still short of demand opens a vaga the waiting list can self-assume. Best-effort.
-  openVagasForCycle(cycleId).catch((e) => console.error("open vagas on publish failed:", e.message));
+  // Publishing with gaps opens a vaga on each still-short slot (waiting list can
+  // self-assume). Cycle-wide, so only on a FULL publish — best-effort.
+  if (!restaurantId) {
+    openVagasForCycle(cycleId).catch((e) => console.error("open vagas on publish failed:", e.message));
+  }
 
   res.json({ ok: true, notifiedUsers: changed.length });
 });

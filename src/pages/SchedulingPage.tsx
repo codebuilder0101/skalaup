@@ -802,11 +802,20 @@ export default function SchedulingPage() {
     void loadBoard();
   };
 
+  // When the escala is filtered to one restaurant, publish only that restaurant.
+  const scopedRestaurantId = restaurantFilter !== "all" ? restaurantFilter : null;
+  const scopedRestaurantName = scopedRestaurantId
+    ? restaurants.find((r) => r.id === scopedRestaurantId)?.name ?? null
+    : null;
+
   const onPublish = async () => {
     if (!cycle) return;
-    if (!window.confirm(t("skala.scheduleBuilder.publishConfirm"))) return;
+    const confirmMsg = scopedRestaurantName
+      ? t("skala.scheduleBuilder.publishConfirmRestaurant", { name: scopedRestaurantName })
+      : t("skala.scheduleBuilder.publishConfirm");
+    if (!window.confirm(confirmMsg)) return;
     setBusy(true);
-    const { error } = await publishCycle(cycle.id);
+    const { error } = await publishCycle(cycle.id, scopedRestaurantId);
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success(t("skala.scheduleBuilder.publishedToast"));
@@ -937,7 +946,9 @@ export default function SchedulingPage() {
                 disabled={busy || !cycle}
               >
                 <Send className="mr-1.5 h-4 w-4" />
-                {published ? t("skala.scheduleBuilder.publishChanges") : t("skala.scheduleBuilder.publish")}
+                {scopedRestaurantName
+                  ? t("skala.scheduleBuilder.publishRestaurant", { name: scopedRestaurantName })
+                  : published ? t("skala.scheduleBuilder.publishChanges") : t("skala.scheduleBuilder.publish")}
                 {draftCount > 0 && ` (${draftCount})`}
               </Button>
             </div>

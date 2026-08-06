@@ -181,10 +181,14 @@ router.get("/mine", async (req, res) => {
     const from = req.query.from || null;
     const to = req.query.to || null;
     const { rows } = await pool.query(
+      // "today" must be the RESTAURANT's local date, not the server's — the server
+      // runs in UTC+2 while the operation is in Brazil (UTC-3), so `current_date`
+      // rolled to tomorrow at ~19h Brazil and dropped that night's dinner shifts from
+      // the freelancer's list (couldn't check out). Fixed 2026-08-06.
       `${LIST_SELECT}
         where a.user_id = $1 and a.status = 'published'
-          and a.date >= coalesce($2::date, current_date)
-          and a.date <= coalesce($3::date, current_date + 7)
+          and a.date >= coalesce($2::date, (now() at time zone coalesce(r.timezone, 'America/Sao_Paulo'))::date)
+          and a.date <= coalesce($3::date, (now() at time zone coalesce(r.timezone, 'America/Sao_Paulo'))::date + 7)
         order by a.date asc, a.shift_type asc`,
       [req.user.sub, from, to],
     );
@@ -699,7 +703,8 @@ router.post("/absences/:id/decision", requireOps, async (req, res) => {
     if (decision === "cancel_remaining") {
       const { rows } = await pool.query(
         `update public.schedule_assignments set status = 'cancelled'
-          where user_id = $1 and status <> 'cancelled' and date >= current_date
+          where user_id = $1 and status <> 'cancelled'
+            and date >= (now() at time zone 'America/Sao_Paulo')::date
           returning id`,
         [ab.userId],
       );

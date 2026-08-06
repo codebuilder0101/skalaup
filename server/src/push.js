@@ -37,7 +37,11 @@ export async function sendPush(userId, payload) {
       let sub;
       try { sub = JSON.parse(token); } catch { return; }
       try {
-        await webpush.sendNotification(sub, body);
+        // urgency 'high' tells the push service (FCM/APNs) to WAKE an idle/dozing
+        // device and deliver now, instead of batching for hours (client 2026-08-06:
+        // a check-in alert created at 18:20 only landed at 22:22). TTL caps how long
+        // a genuinely-offline device's copy is retained so it can't pop up stale.
+        await webpush.sendNotification(sub, body, { urgency: "high", TTL: 14400 });
       } catch (e) {
         if (e.statusCode === 404 || e.statusCode === 410 || e.statusCode === 403) {
           await pool.query(`delete from public.device_tokens where token = $1`, [token]).catch(() => {});

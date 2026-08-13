@@ -200,17 +200,24 @@ router.post("/claim", async (req, res) => {
     await client.query("commit");
     client.release();
 
-    // Best-effort notifications (never block the claim).
+    // Best-effort notifications (never block the claim). Include the restaurant name
+    // and a DD/MM date so the alert is readable (client 2026-08-13).
     const shiftPt = shiftType === "lunch" ? "almoço" : "janta";
+    const dateBr = `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+    let restaurantName = "um restaurante";
+    try {
+      const rr = await one(`select name from public.restaurants where id = $1`, [restaurantId]);
+      if (rr?.name) restaurantName = rr.name;
+    } catch { /* name is best-effort — never block the notification */ }
     notify({
       recipientUserId: uid, type: "schedule_published", title: "Vaga confirmada",
-      body: `Você assumiu o ${shiftPt} de ${date}. Já está na escala! Os pontos entram após você trabalhar o turno.`,
+      body: `Você assumiu o ${shiftPt} de ${dateBr} em ${restaurantName}. Já está na escala! Os pontos entram após você trabalhar o turno.`,
       data: { assignmentId: row.id, cycleId, restaurantId, date, shiftType },
     }).catch(() => {});
     coordinatorIds().then((ids) => ids.forEach((cid) => notify({
       recipientUserId: cid, type: "schedule_published", title: "Vaga assumida",
-      body: `${req.user.name || "Um freelancer"} assumiu uma vaga de ${shiftPt} em ${date}.`,
-      data: { assignmentId: row.id, date, shiftType },
+      body: `${req.user.name || "Um freelancer"} assumiu uma vaga de ${shiftPt} em ${restaurantName} no dia ${dateBr}.`,
+      data: { assignmentId: row.id, restaurantId, date, shiftType },
     }).catch(() => {}))).catch(() => {});
 
     // R20 E3: if this vaga came from a manager's extra-shift request, confirm to that

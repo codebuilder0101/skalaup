@@ -484,7 +484,8 @@ async function alertMissingCheckins() {
     await notifyMany(ids, () => ({
       type: "checkin_absence",
       title: "Falta de check-in",
-      body: `${a.freelancerName} não fez check-in no ${shiftPt} das ${a.startHM} em ${a.restaurantName}.`,
+      // Restaurant FIRST so it stays visible even when the phone truncates the body.
+      body: `${a.restaurantName}: ${a.freelancerName} não fez check-in no ${shiftPt} das ${a.startHM}.`,
       data: { assignmentId: a.id, path: "/attendance" },
     }));
     sent++;

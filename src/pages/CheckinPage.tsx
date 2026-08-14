@@ -17,10 +17,17 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 function getCurrentCoords(): Promise<{ latitude: number; longitude: number } | null> {
   return new Promise((resolve) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(null);
+    let done = false;
+    const finish = (v: { latitude: number; longitude: number } | null) => { if (!done) { done = true; resolve(v); } };
+    // Never let GPS block the check-in: network accuracy is enough for a ~500m
+    // geofence and is far faster than high-accuracy GPS (which hangs indoors), a
+    // cached fix is fine, and a hard 4s cap resolves null so the check-in proceeds
+    // (the server enforces the geofence only when the restaurant has coordinates).
+    setTimeout(() => finish(null), 4000);
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+      (pos) => finish({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => finish(null),
+      { enableHighAccuracy: false, timeout: 4000, maximumAge: 120000 },
     );
   });
 }

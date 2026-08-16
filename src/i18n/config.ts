@@ -31,6 +31,15 @@ export function setStoredLanguage(lang: SupportedLanguage): void {
 export function initI18n() {
   const stored = getStoredLanguage();
 
+  // Keep <html lang> accurate for the active language (a11y + stops the browser
+  // mistaking the page's language and offering to auto-translate — which rewrites
+  // the DOM and crashes React). `translate="no"` in index.html is the hard stop.
+  const syncHtmlLang = (lng: string) => {
+    if (typeof document !== "undefined") document.documentElement.lang = lng || "pt-BR";
+  };
+  i18n.on("languageChanged", syncHtmlLang);
+  syncHtmlLang(stored);
+
   return i18n
     .use(LanguageDetector)
     .use(initReactI18next)

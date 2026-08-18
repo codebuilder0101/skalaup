@@ -50,6 +50,7 @@ export default function MySchedulePage() {
   const [assignments, setAssignments] = useState<ScheduleAssignment[]>([]);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const [viewMonth, setViewMonth] = useState<string>(() => monthOf(todayStr()));
   const [selectedDay, setSelectedDay] = useState<string>(() => todayStr());
@@ -64,7 +65,11 @@ export default function MySchedulePage() {
       listRestaurants(),
       listAssignments({ userId: user.id, status: "published" }),
     ]);
-    if (error) toast.error(error.message);
+    // A load failure must NOT blank the schedule — keep whatever was shown and flag
+    // the error so the UI offers a retry, instead of looking like the shifts vanished
+    // (client 2026-08-18).
+    if (error) { setLoadError(true); return; }
+    setLoadError(false);
     // The restaurants list is scoped to the freelancer's linked clients, but a
     // published shift can be at any restaurant (e.g. a grabbed vaga). Fetch any
     // missing ones by id so the day-detail always shows the real restaurant name.
@@ -193,6 +198,15 @@ export default function MySchedulePage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">{t("skala.mySchedule.subtitle")}</p>
         </div>
+
+        {loadError && (
+          <Card className="flex flex-wrap items-center justify-between gap-3 border-amber-400/40 bg-amber-400/10 p-4">
+            <p className="text-sm text-foreground">{t("skala.mySchedule.loadError")}</p>
+            <Button size="sm" variant="outline" onClick={() => { setLoading(true); void reload().finally(() => setLoading(false)); }}>
+              {t("skala.mySchedule.retry")}
+            </Button>
+          </Card>
+        )}
 
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

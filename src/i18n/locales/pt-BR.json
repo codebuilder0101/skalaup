@@ -2068,6 +2068,8 @@
     "mySchedule": {
       "title": "Minha Escala",
       "subtitle": "Seus turnos publicados e exportação para o Google Agenda.",
+      "loadError": "Não foi possível carregar sua escala agora. Isso costuma ser instabilidade de internet — sua escala não foi perdida.",
+      "retry": "Tentar novamente",
       "upcoming": "Próximos turnos",
       "emptyUpcoming": "Você ainda não tem turnos publicados.",
       "emptyDay": "Nenhum plantão neste dia.",

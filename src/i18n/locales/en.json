@@ -2068,6 +2068,8 @@
     "mySchedule": {
       "title": "My Schedule",
       "subtitle": "Your published shifts and Google Calendar export.",
+      "loadError": "Couldn't load your schedule right now. This is usually a connection issue — your schedule wasn't lost.",
+      "retry": "Try again",
       "upcoming": "Upcoming shifts",
       "emptyUpcoming": "You don't have any published shifts yet.",
       "emptyDay": "No shifts on this day.",

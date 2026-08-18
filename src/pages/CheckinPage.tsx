@@ -38,12 +38,16 @@ export default function CheckinPage() {
 
   const [shifts, setShifts] = useState<AttendanceShift[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     const { data, error } = await listMyShifts();
-    if (error) toast.error(error.message);
-    else setShifts(data);
+    // Keep prior shifts on a load failure and flag it, so a connection blip doesn't
+    // look like the shifts vanished / block the check-in (client 2026-08-18).
+    if (error) { setLoadError(true); return; }
+    setLoadError(false);
+    setShifts(data);
   }, []);
 
   useEffect(() => {
@@ -95,9 +99,17 @@ export default function CheckinPage() {
     <AppLayout>
       <div className="p-6 max-w-3xl mx-auto space-y-5">
         <PageHeader />
+        {loadError && (
+          <Card className="flex flex-wrap items-center justify-between gap-3 border-amber-400/40 bg-amber-400/10 p-4">
+            <p className="text-sm text-foreground">{t("skala.mySchedule.loadError")}</p>
+            <Button size="sm" variant="outline" onClick={() => { setLoading(true); void reload().finally(() => setLoading(false)); }}>
+              {t("skala.mySchedule.retry")}
+            </Button>
+          </Card>
+        )}
         {loading ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{t("skala.common.loading")}</p>
-        ) : groups.length === 0 ? (
+        ) : loadError && shifts.length === 0 ? null : groups.length === 0 ? (
           <Card className="p-10 text-center text-muted-foreground">{t("skala.checkin.noShifts")}</Card>
         ) : (
           <div className="space-y-5">

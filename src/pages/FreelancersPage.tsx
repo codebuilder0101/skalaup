@@ -350,15 +350,15 @@ export default function FreelancersPage() {
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-between gap-4">
+      <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <Users className="w-6 h-6 text-primary" /> {t("skala.freelancers.title")}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">{t("skala.freelancers.subtitle")}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Granting a role is administrator-only (client 2026-07-20). */}
             {user?.role === "administrator" && (
               <Button variant="outline" onClick={openEmails}>
@@ -376,7 +376,7 @@ export default function FreelancersPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {items.map((f) => (
-              <Card key={f.id} className="p-4 flex items-start justify-between gap-4">
+              <Card key={f.id} className="p-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-semibold text-foreground truncate">{f.name}</h3>
@@ -438,12 +438,12 @@ export default function FreelancersPage() {
                     <div className="flex flex-wrap items-center gap-1 pt-0.5">
                       <Store className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                       {f.clients.map((c) => (
-                        <Badge key={c.id} variant="outline" className="text-[10px] font-normal">{c.name}</Badge>
+                        <Badge key={c.id} variant="outline" className="whitespace-nowrap text-[10px] font-normal">{c.name}</Badge>
                       ))}
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
+                <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
                   {f.status === "inactive" && (
                     <Button size="sm" variant="outline" className="text-emerald-600" onClick={() => void reactivate(f)}>
                       <UserCheck className="w-3.5 h-3.5 mr-1" />{t("skala.freelancers.reactivate")}

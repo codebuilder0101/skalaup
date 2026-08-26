@@ -312,7 +312,9 @@ export default function Index() {
           </>
         ) : (
           /* ---------- Coordinator / administrator: operation overview ---------- */
-          <>
+          /* flex + order so "Escala de hoje" — the most-consulted block day to day —
+             floats to the top on mobile, while keeping its desktop position last. */
+          <div className="flex flex-col gap-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Stat
                 icon={Store} color="text-orange-500" to="/restaurants"
@@ -392,8 +394,10 @@ export default function Index() {
             </div>
             <SchedulePerformancePanel />
             <DashboardCharts trend={data.shiftsTrend} buckets={data.scoreBuckets} />
-            <TodaySchedule shifts={data.todaySchedule} showRestaurant showAttendance={false} />
-          </>
+            <div className="order-first lg:order-none">
+              <TodaySchedule shifts={data.todaySchedule} showRestaurant showAttendance={false} />
+            </div>
+          </div>
         )}
       </div>
     </AppLayout>

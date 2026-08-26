@@ -29,10 +29,10 @@ export function EnablePushBanner() {
     setBusy(true);
     const { ok, error } = await enablePush();
     setBusy(false);
-    if (ok) { toast.success(t("skala.push.enabled")); setShow(false); return; }
-    if (error === "denied") { toast.error(t("skala.push.deniedToast")); return; }
+    if (ok) { toast.success(t("skala.settings.push.enabled")); setShow(false); return; }
+    if (error === "denied") { toast.error(t("skala.settings.push.deniedToast")); return; }
     if (error === "unsupported") { setShow(false); return; }
-    toast.error(t("skala.push.error"));
+    toast.error(t("skala.settings.push.error"));
   };
 
   const dismiss = () => {
@@ -44,12 +44,12 @@ export function EnablePushBanner() {
     <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-3">
       <BellRing className="h-5 w-5 shrink-0 text-primary" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{t("skala.push.nudgeTitle")}</p>
-        <p className="text-xs text-muted-foreground">{t("skala.push.nudgeBody")}</p>
+        <p className="text-sm font-medium text-foreground">{t("skala.settings.push.nudgeTitle")}</p>
+        <p className="text-xs text-muted-foreground">{t("skala.settings.push.nudgeBody")}</p>
       </div>
       <Button size="sm" className="h-8 shrink-0 rounded-xl" onClick={() => void enable()} disabled={busy}>
         {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-        {t("skala.push.enable")}
+        {t("skala.settings.push.enable")}
       </Button>
       <button type="button" onClick={dismiss} aria-label={t("skala.common.close")}
         className="shrink-0 text-muted-foreground/60 transition-colors hover:text-muted-foreground">

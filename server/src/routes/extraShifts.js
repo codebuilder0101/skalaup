@@ -2,7 +2,8 @@ import { Router } from "express";
 import { pool, one } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { isOps, managerRestaurantIds, canEditRestaurant } from "../access.js";
-import { weekdayOf, isWeekendMandatory, resolveShiftTimes } from "../scheduleRules.js";
+import { weekdayOf, isWeekendMandatory, resolveShiftTimes, resolveSlotTimes } from "../scheduleRules.js";
+import { findTimeConflict, conflictMessage, isConflictCode } from "../conflicts.js";
 import { notify, coordinatorIds } from "../notify.js";
 
 // Extra shifts ("turno extra"). A restaurant manager requests a shift beyond the base
@@ -127,6 +128,9 @@ router.get("/:id/eligible", async (req, res) => {
       [req.params.id],
     );
     if (!e) return res.status(404).json({ error: "Not found" });
+    // Free means free at THESE HOURS — a person on another restaurant's 14:00–22:00
+    // "lunch" is not a candidate for an 18:00 dinner (client 2026-09-01).
+    const t = await resolveSlotTimes(e.restaurantId, e.date, e.shiftType);
     const { rows } = await pool.query(
       `select u.id, u.name, coalesce(fp.current_score, 0) as score
          from public.users u
@@ -134,10 +138,11 @@ router.get("/:id/eligible", async (req, res) => {
         where u.role in ('freelancer','visitor') and u.status = 'active'
           and not exists (
             select 1 from public.schedule_assignments x
-             where x.user_id = u.id and x.date = $1 and x.shift_type = $2
-               and x.status <> 'cancelled')
+             where x.user_id = u.id and x.date = $1 and x.status <> 'cancelled'
+               and public.assignment_window(x.date, x.start_time, x.end_time)
+                   && public.assignment_window($1::date, $2::time, $3::time))
         order by score desc, u.name asc`,
-      [e.date, e.shiftType],
+      [e.date, t.startTime, t.endTime],
     );
     res.json(rows.map((r) => ({ id: r.id, name: r.name, score: Number(r.score) })));
   } catch (e) {
@@ -243,12 +248,13 @@ router.post("/:id/assign", async (req, res) => {
     if (!u || !isFreela(u.role) || u.status !== "active") {
       return res.status(400).json({ error: "invalid_user", message: "Freelancer indisponível." });
     }
-    const clash = await one(
-      `select 1 from public.schedule_assignments
-        where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'`,
-      [userId, e.date, e.shiftType],
-    );
-    if (clash) return res.status(409).json({ error: "user_busy", message: "Este freelancer já está escalado neste turno." });
+    const inviteTimes = await resolveSlotTimes(e.restaurantId, e.date, e.shiftType);
+    const clash = await findTimeConflict({
+      userId, date: e.date, startTime: inviteTimes.startTime, endTime: inviteTimes.endTime,
+    });
+    if (clash) {
+      return res.status(409).json({ error: "user_busy", message: conflictMessage(clash, "este freelancer já está") });
+    }
 
     await pool.query(
       `update public.extra_shift_requests
@@ -318,14 +324,14 @@ router.post("/:id/accept", async (req, res) => {
       return res.status(409).json({ error: "expired", message: "O prazo para aceitar este convite expirou." });
     }
     if (e.date < today()) return res.status(400).json({ error: "past_date", message: "Este turno já passou." });
-    const clash = await one(
-      `select 1 from public.schedule_assignments
-        where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'`,
-      [req.user.sub, e.date, e.shiftType],
-    );
-    if (clash) return res.status(409).json({ error: "clash", message: "Você já está escalado neste turno." });
+    // The invite may have sat for hours — re-check against the freelancer's CURRENT
+    // schedule, by clock window, before it becomes a real assignment.
+    const times = await resolveSlotTimes(e.restaurantId, e.date, e.shiftType);
+    const clash = await findTimeConflict({
+      userId: req.user.sub, date: e.date, startTime: times.startTime, endTime: times.endTime,
+    });
+    if (clash) return res.status(409).json({ error: "clash", message: conflictMessage(clash) });
 
-    const times = await resolveShiftTimes(e.restaurantId, e.shiftType);
     const weekendMandatory = isWeekendMandatory(weekdayOf(e.date), e.shiftType);
     const cyc = await one(
       `select id from public.availability_cycles
@@ -364,6 +370,12 @@ router.post("/:id/accept", async (req, res) => {
     }
     res.status(201).json({ status: "filled", assignmentId: a.id });
   } catch (e2) {
+    if (isConflictCode(e2)) {
+      return res.status(409).json({
+        error: "clash",
+        message: "Conflito de horário: você já tem um turno que cruza com este.",
+      });
+    }
     console.error("extra-shift accept error:", e2.message);
     res.status(500).json({ error: "Falha ao aceitar o turno extra." });
   }

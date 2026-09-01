@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from "../auth.js";
 import { weekdayOf, isWeekendMandatory, resolveShiftTimes } from "../scheduleRules.js";
 import { isOps, managerRestaurantIds } from "../access.js";
 import { openVagaForSlot } from "../demand.js";
+import { windowsOverlap } from "../conflicts.js";
 
 // Demand configuration (§3.5) + the aggregated builder board read by the Schedule
 // Builder screen. Restricted to coordinator/administrator: the restaurant_manager
@@ -330,7 +331,7 @@ router.get("/week", async (req, res) => {
   const restIds = restaurants.map((r) => r.id);
 
   // Preload everything for the week in a few queries, assemble in JS.
-  const [tpl, base, overrides, assigned, subs] = await Promise.all([
+  const [tpl, base, overrides, assigned, subs, busyAll] = await Promise.all([
     pool.query(
       `select restaurant_id as "restaurantId", shift_type as "shiftType", label,
               to_char(start_time, 'HH24:MI') as "startTime", to_char(end_time, 'HH24:MI') as "endTime"
@@ -365,6 +366,18 @@ router.get("/week", async (req, res) => {
               and (restaurant_id = any($2) or restaurant_id is null)`,
           [cycleId, restIds, weekStart, weekEnd])
       : Promise.resolve({ rows: [] }),
+    // Hours already booked per freelancer across EVERY restaurant in the range. The
+    // grid needs these to grey out someone whose clock is taken — including at a
+    // restaurant filtered out of the current view, which the per-cell `assigned`
+    // rows above can never show (client 2026-09-01).
+    pool.query(
+      `select a.user_id as "userId", a.date::text as date, r.name as "restaurantName",
+              to_char(a.start_time, 'HH24:MI') as "startTime",
+              to_char(a.end_time, 'HH24:MI') as "endTime"
+         from public.schedule_assignments a
+         left join public.restaurants r on r.id = a.restaurant_id
+        where a.date between $1 and $2 and a.status <> 'cancelled'`,
+      [weekStart, weekEnd]),
   ]);
 
   const tplByKey = new Map(); // `${restaurantId}|${shiftType}` -> [{label,startTime,endTime}]
@@ -480,7 +493,7 @@ router.get("/week", async (req, res) => {
     }),
   }));
 
-  res.json({ weekStart, weekEnd, cycleId: cycleId ?? null, days, shifts });
+  res.json({ weekStart, weekEnd, cycleId: cycleId ?? null, days, shifts, busyWindows: busyAll.rows });
 });
 
 // POST /api/scheduling/autofill { cycleId, weekStart, restaurantId? }
@@ -506,10 +519,15 @@ router.post("/autofill", requireOps, async (req, res) => {
     pool.query(`select restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType", required_count as n
                   from public.demand_overrides where restaurant_id = any($1) and date between $2 and $3`,
       [restIds, weekStart, weekEnd]),
-    pool.query(`select restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType", user_id as "userId"
+    // Every restaurant, not just the ones being filled: a freelancer booked at a
+    // restaurant outside this run still cannot be in two places at once.
+    pool.query(`select restaurant_id as "restaurantId", date::text as date, shift_type as "shiftType",
+                       user_id as "userId",
+                       to_char(start_time, 'HH24:MI') as "startTime",
+                       to_char(end_time, 'HH24:MI') as "endTime"
                   from public.schedule_assignments
-                 where restaurant_id = any($1) and date between $2 and $3 and status <> 'cancelled'`,
-      [restIds, weekStart, weekEnd]),
+                 where date between $1 and $2 and status <> 'cancelled'`,
+      [weekStart, weekEnd]),
     // Broadened pool (§3.3): availability for the week across ALL restaurants, so a
     // freelancer can be autofilled into any restaurant regardless of where they registered.
     pool.query(`select s.restaurant_id as "restaurantId", s.date::text as date, s.shift_type as "shiftType",
@@ -533,13 +551,29 @@ router.post("/autofill", requireOps, async (req, res) => {
     }
   }
 
-  // Count of current assignments per slot + "busy" set (userId|date|shift) for conflict.
+  // Count of current assignments per slot (in-scope restaurants only) + the hours
+  // each freelancer already works that day (ALL restaurants) for the conflict test.
+  const restIdSet = new Set(restIds);
   const assignedCount = new Map();
-  const busy = new Set();
+  const busyWindows = new Map(); // `${userId}|${date}` -> [{startTime, endTime}]
   for (const a of assigned.rows) {
-    assignedCount.set(`${a.restaurantId}|${a.date}|${a.shiftType}`, (assignedCount.get(`${a.restaurantId}|${a.date}|${a.shiftType}`) || 0) + 1);
-    busy.add(`${a.userId}|${a.date}|${a.shiftType}`);
+    if (restIdSet.has(a.restaurantId)) {
+      const k = `${a.restaurantId}|${a.date}|${a.shiftType}`;
+      assignedCount.set(k, (assignedCount.get(k) || 0) + 1);
+    }
+    const bk = `${a.userId}|${a.date}`;
+    if (!busyWindows.has(bk)) busyWindows.set(bk, []);
+    busyWindows.get(bk).push({ startTime: a.startTime, endTime: a.endTime });
   }
+  // Conflict is an overlap of CLOCK WINDOWS, not a repeated shift_type label — a
+  // 14:00–22:00 "lunch" blocks an 18:00 "dinner" elsewhere (client 2026-09-01).
+  const isBusy = (userId, date, win) =>
+    (busyWindows.get(`${userId}|${date}`) || []).some((w) => windowsOverlap(w, win));
+  const markBusy = (userId, date, win) => {
+    const bk = `${userId}|${date}`;
+    if (!busyWindows.has(bk)) busyWindows.set(bk, []);
+    busyWindows.get(bk).push(win);
+  };
   // member_clients: userId → Set(restaurantId in scope).
   const mcByUser = new Map();
   for (const m of mc.rows) {
@@ -588,10 +622,10 @@ router.post("/autofill", requireOps, async (req, res) => {
         const ovt = overrideTimeMap.get(slotKey);
         const slotStart = ovt?.startTime ?? times.startTime;
         const slotEnd = ovt?.endTime ?? times.endTime;
+        const slotWindow = { startTime: slotStart, endTime: slotEnd };
         for (const c of cands) {
           if (have >= required) break;
-          const conflictKey = `${c.userId}|${date}|${shiftType}`;
-          if (busy.has(conflictKey)) { skippedConflicts++; continue; }
+          if (isBusy(c.userId, date, slotWindow)) { skippedConflicts++; continue; }
           try {
             await pool.query(
               `insert into public.schedule_assignments
@@ -600,7 +634,7 @@ router.post("/autofill", requireOps, async (req, res) => {
                values ($1,$2,$3,$4,$5,$6,$7,'draft',$8,'coordinator',$9)`,
               [cycleId, r.id, c.userId, date, shiftType, slotStart, slotEnd, weekendMandatory, req.user.sub],
             );
-            busy.add(conflictKey);
+            markBusy(c.userId, date, slotWindow);
             have++;
             assignmentsCreated++;
           } catch { /* unique conflict — skip */ }

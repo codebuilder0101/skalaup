@@ -2,7 +2,8 @@ import { Router } from "express";
 import { pool, one } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { resolveDemand } from "../demand.js";
-import { weekdayOf, isWeekendMandatory, resolveShiftTimes } from "../scheduleRules.js";
+import { weekdayOf, isWeekendMandatory, resolveSlotTimes } from "../scheduleRules.js";
+import { findTimeConflict, conflictMessage, isConflictCode } from "../conflicts.js";
 import { notify, coordinatorIds } from "../notify.js";
 
 // Open vagas / furos that a freelancer can SELF-ACCEPT (§ client flow). Priority is
@@ -39,15 +40,36 @@ router.get("/open", async (req, res) => {
        ),
        rests as (select id as restaurant_id, name from public.restaurants where active),
        shifts as (select unnest(array['lunch','dinner']) as shift_type),
+       -- The restaurant's primary window per meal period (earliest slot), used to
+       -- work out whether a vaga collides with what the freelancer already has.
+       tpl as (
+         select distinct on (restaurant_id, shift_type)
+                restaurant_id, shift_type, start_time, end_time
+           from public.shift_templates
+          order by restaurant_id, shift_type, start_time asc
+       ),
        slots as (
          select days.cycle_id, rests.restaurant_id, rests.name as restaurant_name,
                 days.date, days.weekday, shifts.shift_type,
-                coalesce(ov.required_count, base.required_count, 0) as required
+                coalesce(ov.required_count, base.required_count, 0) as required,
+                -- an extra shift's own hours win, then the template, then §8.1 defaults
+                coalesce(case when ov.start_time is not null and ov.end_time is not null
+                              then ov.start_time end,
+                         tpl.start_time,
+                         case when shifts.shift_type = 'lunch' then time '12:00' else time '18:00' end
+                ) as start_time,
+                coalesce(case when ov.start_time is not null and ov.end_time is not null
+                              then ov.end_time end,
+                         tpl.end_time,
+                         case when shifts.shift_type = 'lunch' then time '16:00' else time '22:00' end
+                ) as end_time
            from days cross join rests cross join shifts
            left join public.demand_overrides ov
              on ov.restaurant_id = rests.restaurant_id and ov.date = days.date and ov.shift_type = shifts.shift_type
            left join public.restaurant_demand base
              on base.restaurant_id = rests.restaurant_id and base.weekday = days.weekday and base.shift_type = shifts.shift_type
+           left join tpl
+             on tpl.restaurant_id = rests.restaurant_id and tpl.shift_type = shifts.shift_type
        )
        select s.cycle_id as "cycleId", s.restaurant_id as "restaurantId", s.restaurant_name as "restaurantName",
               s.date::text as date, s.shift_type as "shiftType",
@@ -71,9 +93,12 @@ router.get("/open", async (req, res) => {
           and s.required > (select count(*) from public.schedule_assignments a
                              where a.restaurant_id = s.restaurant_id and a.date = s.date
                                and a.shift_type = s.shift_type and a.status <> 'cancelled')
+          -- Never OFFER a vaga the freelancer cannot legally take: hide the ones whose
+          -- hours cross a shift they already have that day, anywhere (client 2026-09-01).
           and not exists (select 1 from public.schedule_assignments a2
-                           where a2.user_id = $1 and a2.date = s.date
-                             and a2.shift_type = s.shift_type and a2.status <> 'cancelled')
+                           where a2.user_id = $1 and a2.date = s.date and a2.status <> 'cancelled'
+                             and public.assignment_window(a2.date, a2.start_time, a2.end_time)
+                                 && public.assignment_window(s.date, s.start_time, s.end_time))
           and (
             wl.opened_at is null                                        -- nobody had priority → open to all
             or extract(epoch from (now() - wl.opened_at)) / 60 >= $2    -- priority window elapsed → open to all
@@ -128,14 +153,16 @@ router.post("/claim", async (req, res) => {
       return res.status(409).json({ error: "filled", message: "Essa vaga acabou de ser preenchida." });
     }
 
-    // No clash: not already scheduled that date+shift anywhere.
-    const clash = (await client.query(
-      `select 1 from public.schedule_assignments
-        where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled' limit 1`,
-      [uid, date, shiftType])).rows[0];
+    // No clash: nothing the freelancer already works that day may overlap these
+    // hours — at this or any other restaurant. Checked under the slot's advisory
+    // lock, on the same connection that will do the insert.
+    const times = await resolveSlotTimes(restaurantId, date, shiftType);
+    const clash = await findTimeConflict(
+      { userId: uid, date, startTime: times.startTime, endTime: times.endTime }, client,
+    );
     if (clash) {
       await client.query("rollback"); client.release();
-      return res.status(409).json({ error: "clash", message: "Você já está escalado neste turno." });
+      return res.status(409).json({ error: "clash", message: conflictMessage(clash) });
     }
 
     // Priority gate: within the fresh window, only enrolled (available) users may claim.
@@ -157,7 +184,6 @@ router.post("/claim", async (req, res) => {
     }
 
     const weekendMandatory = isWeekendMandatory(weekdayOf(date), shiftType);
-    const times = await resolveShiftTimes(restaurantId, shiftType);
     const row = (await client.query(
       `insert into public.schedule_assignments
          (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time,
@@ -245,6 +271,12 @@ router.post("/claim", async (req, res) => {
   } catch (e) {
     try { await client.query("rollback"); } catch { /* ignore */ }
     client.release();
+    if (isConflictCode(e)) {
+      return res.status(409).json({
+        error: "clash",
+        message: "Conflito de horário: você já tem um turno que cruza com este.",
+      });
+    }
     console.error("vaga claim error:", e.message);
     res.status(500).json({ error: "Falha ao assumir a vaga. Tente novamente." });
   }

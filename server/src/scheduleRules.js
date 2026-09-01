@@ -36,6 +36,24 @@ export async function resolveShiftTimes(restaurantId, shiftType) {
   return { startTime: d.start, endTime: d.end };
 }
 
+// Same as resolveShiftTimes, but for a CONCRETE date: an extra/intermediate shift
+// opened on that date carries its own hours in demand_overrides and those win. The
+// escala's autofill already honoured them; the vaga-claim and extra-shift-accept
+// paths did not, so a 16:00–20:00 extra shift was stored as the template's
+// 12:00–16:00 — wrong on the freelancer's card AND invisible to the conflict check.
+export async function resolveSlotTimes(restaurantId, date, shiftType) {
+  const ov = await one(
+    `select to_char(start_time, 'HH24:MI') as "startTime",
+            to_char(end_time, 'HH24:MI') as "endTime"
+       from public.demand_overrides
+      where restaurant_id = $1 and date = $2 and shift_type = $3
+        and start_time is not null and end_time is not null`,
+    [restaurantId, date, shiftType],
+  );
+  if (ov) return { startTime: ov.startTime, endTime: ov.endTime };
+  return resolveShiftTimes(restaurantId, shiftType);
+}
+
 function addDays(dateStr, delta) {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + delta);

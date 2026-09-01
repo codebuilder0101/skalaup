@@ -5,6 +5,7 @@ import { notify, coordinatorIds } from "../notify.js";
 import { weekdayOf, isWeekendMandatory } from "../scheduleRules.js";
 import { monthRefOf } from "../payroll.js";
 import { getScorePoints } from "../scoreConfig.js";
+import { findTimeConflict, conflictMessage } from "../conflicts.js";
 
 // Shift swaps (§7). State machine:
 //   pending_target → (target accepts) approved   ← auto-approved on acceptance
@@ -196,7 +197,9 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "assignmentId and targetUserId are required" });
     }
     const a = await one(
-      `select id, user_id as "userId", date::text as date, shift_type as "shiftType", status
+      `select id, user_id as "userId", date::text as date, shift_type as "shiftType", status,
+              to_char(start_time, 'HH24:MI') as "startTime",
+              to_char(end_time, 'HH24:MI') as "endTime"
          from public.schedule_assignments where id = $1`,
       [b.assignmentId],
     );
@@ -219,14 +222,13 @@ router.post("/", async (req, res) => {
     if (!target || !["freelancer", "visitor"].includes(target.role) || target.status !== "active") {
       return res.status(400).json({ error: "invalid_target", message: "Freelancer indisponível." });
     }
-    // Target must not already be scheduled that slot.
-    const targetClash = await one(
-      `select 1 from public.schedule_assignments
-        where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'`,
-      [b.targetUserId, a.date, a.shiftType],
-    );
+    // Target must be free at THESE HOURS — not merely free of the same meal label.
+    const targetClash = await findTimeConflict({
+      userId: b.targetUserId, date: a.date, startTime: a.startTime, endTime: a.endTime,
+      excludeAssignmentId: a.id,
+    });
     if (targetClash) {
-      return res.status(409).json({ error: "target_busy", message: "Este freelancer já está escalado neste turno." });
+      return res.status(409).json({ error: "target_busy", message: conflictMessage(targetClash, "este freelancer já está") });
     }
     // No other active swap already awaiting a target for this shift.
     const existing = await one(
@@ -282,7 +284,9 @@ router.post("/:id/respond", async (req, res) => {
     const s = await one(
       `select s.id, s.assignment_id as "assignmentId", s.requester_user_id as "requesterUserId",
               s.target_user_id as "targetUserId", s.status,
-              a.date::text as date, a.shift_type as "shiftType"
+              a.date::text as date, a.shift_type as "shiftType",
+              to_char(a.start_time, 'HH24:MI') as "startTime",
+              to_char(a.end_time, 'HH24:MI') as "endTime"
          from public.shift_swap_requests s
          join public.schedule_assignments a on a.id = s.assignment_id
         where s.id = $1`,
@@ -307,15 +311,14 @@ router.post("/:id/respond", async (req, res) => {
       return res.json({ status: "rejected" });
     }
 
-    // Accept → re-validate the target (me) is still free for this slot, then apply.
-    const clash = await one(
-      `select 1 from public.schedule_assignments
-        where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'
-          and id <> $4`,
-      [s.targetUserId, s.date, s.shiftType, s.assignmentId],
-    );
+    // Accept → re-validate that MY hours are still free (the swap may have waited
+    // days, and I may have taken a vaga meanwhile), then apply.
+    const clash = await findTimeConflict({
+      userId: s.targetUserId, date: s.date, startTime: s.startTime, endTime: s.endTime,
+      excludeAssignmentId: s.assignmentId,
+    });
     if (clash) {
-      return res.status(409).json({ error: "target_busy", message: "Você já está escalado neste turno." });
+      return res.status(409).json({ error: "target_busy", message: conflictMessage(clash) });
     }
 
     await applySwapAndScore(s);
@@ -359,7 +362,9 @@ router.post("/:id/decision", requireOps, async (req, res) => {
     const s = await one(
       `select s.id, s.assignment_id as "assignmentId", s.requester_user_id as "requesterUserId",
               s.target_user_id as "targetUserId", s.status,
-              a.date::text as date, a.shift_type as "shiftType"
+              a.date::text as date, a.shift_type as "shiftType",
+              to_char(a.start_time, 'HH24:MI') as "startTime",
+              to_char(a.end_time, 'HH24:MI') as "endTime"
          from public.shift_swap_requests s
          join public.schedule_assignments a on a.id = s.assignment_id
         where s.id = $1`,
@@ -377,15 +382,16 @@ router.post("/:id/decision", requireOps, async (req, res) => {
     if (s.date < new Date().toISOString().slice(0, 10)) {
       return res.status(400).json({ error: "past_shift", message: "Este turno já passou e não pode ser reprovado." });
     }
-    // The requester must still be free to take the shift back.
-    const clash = await one(
-      `select 1 from public.schedule_assignments
-        where user_id = $1 and date = $2 and shift_type = $3 and status <> 'cancelled'
-          and id <> $4`,
-      [s.requesterUserId, s.date, s.shiftType, s.assignmentId],
-    );
+    // The requester must still be free — by hours — to take the shift back.
+    const clash = await findTimeConflict({
+      userId: s.requesterUserId, date: s.date, startTime: s.startTime, endTime: s.endTime,
+      excludeAssignmentId: s.assignmentId,
+    });
     if (clash) {
-      return res.status(409).json({ error: "requester_busy", message: "O solicitante já está escalado neste turno; não é possível reverter." });
+      return res.status(409).json({
+        error: "requester_busy",
+        message: `${conflictMessage(clash, "o solicitante já está")} Não é possível reverter.`,
+      });
     }
 
     await reverseSwap(s);

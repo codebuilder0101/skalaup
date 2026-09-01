@@ -141,12 +141,24 @@ export interface WeekShiftGroup {
   restaurants: WeekRestaurantRow[];
 }
 
+// One booked window of one freelancer, from ANY restaurant in the range — including
+// restaurants filtered out of the current view. The grid flags a candidate whose
+// hours overlap the slot being staffed (client 2026-09-01).
+export interface BusyWindow {
+  userId: string;
+  date: string;
+  restaurantName: string | null;
+  startTime: string;
+  endTime: string;
+}
+
 export interface WeekBoard {
   weekStart: string;
   weekEnd: string;
   cycleId: string | null;
   days: WeekDay[];
   shifts: WeekShiftGroup[];
+  busyWindows: BusyWindow[];
 }
 
 // Board for a date range. Pass either weekStart (legacy 7-day week) or

@@ -28,8 +28,9 @@ import { getCycleByMonth, createCycle, listSlotAvailability } from "@/lib/skalau
 import { createAssignment, cancelAssignment, publishCycle, setAssignmentBonus } from "@/lib/skalaup/assignments";
 import {
   getWeekBoard, getMyScope, listAllMembers,
-  type WeekBoard, type WeekCell, type ShiftSlot,
+  type WeekBoard, type WeekCell, type ShiftSlot, type BusyWindow,
 } from "@/lib/skalaup/scheduling";
+import { findBusyConflict } from "@/lib/skalaup/conflicts";
 import type { AvailabilityCycle, Restaurant, ShiftType } from "@/lib/skalaup/types";
 
 // ---- date helpers (UTC-safe; date-only strings) ----------------------------
@@ -91,7 +92,7 @@ const assignedChipClass = (status: string) =>
 
 // ---- One grid cell (restaurant × shift × day) with assign popover ----------
 function ScheduleCell({
-  cell, restaurantId, shiftType, startTime, endTime, slots, cycleId, isToday, busyUserIds, canEdit, canFill, published, onChanged,
+  cell, restaurantId, shiftType, startTime, endTime, slots, cycleId, isToday, busyWindows, canEdit, canFill, published, onChanged,
   variant = "grid",
 }: {
   cell: WeekCell;
@@ -102,7 +103,7 @@ function ScheduleCell({
   slots: ShiftSlot[];
   cycleId: string | null;
   isToday: boolean;
-  busyUserIds: Set<string>;
+  busyWindows: BusyWindow[];
   canEdit: boolean;
   canFill: boolean;
   published: boolean;
@@ -182,7 +183,11 @@ function ScheduleCell({
   };
 
   const renderRow = (c: SlotCandidate) => {
-    const conflicted = busyUserIds.has(c.userId);
+    // Conflict = the candidate already works hours that cross THIS slot's window,
+    // at any restaurant (client 2026-09-01). The old test was "same meal period",
+    // which let a 14:00–22:00 lunch coexist with an 18:00–22:00 dinner elsewhere.
+    const clash = findBusyConflict(busyWindows, c.userId, slot);
+    const conflicted = !!clash;
     return (
       <div key={c.id} className="flex items-center justify-between gap-2">
         <div className="min-w-0">
@@ -227,7 +232,12 @@ function ScheduleCell({
           )}
         </div>
         <Button size="sm" variant="outline" className="h-7" disabled={working || conflicted}
-          title={conflicted ? t("skala.scheduleBuilder.conflictHint") : undefined}
+          title={clash
+            ? t("skala.scheduleBuilder.conflictHint", {
+                start: clash.startTime, end: clash.endTime,
+                restaurant: clash.restaurantName ?? t("skala.scheduleBuilder.anotherClient"),
+              })
+            : undefined}
           onClick={() => void assign(c.userId)}>
           <Plus className="w-3 h-3 mr-0.5" />{t("skala.scheduleBuilder.assign")}
         </Button>
@@ -706,18 +716,18 @@ export default function SchedulingPage() {
 
   useEffect(() => { void loadBoard(); }, [loadBoard]);
 
-  // userIds assigned per date+shift (any restaurant) — for conflict flags.
-  const busyByDateShift = useMemo(() => {
-    const m = new Map<string, Set<string>>();
-    board?.shifts.forEach((sg) =>
-      sg.restaurants.forEach((r) =>
-        r.cells.forEach((c) => {
-          const k = `${c.date}|${sg.shiftType}`;
-          if (!m.has(k)) m.set(k, new Set());
-          c.assigned.forEach((a) => m.get(k)!.add(a.userId));
-        })));
+  // Booked hours per date, across EVERY restaurant — sent whole by the backend so a
+  // conflict is still caught when the board is filtered to one restaurant (the cells
+  // only carry the filtered restaurants' assignments).
+  const busyByDate = useMemo(() => {
+    const m = new Map<string, BusyWindow[]>();
+    (board?.busyWindows ?? []).forEach((w) => {
+      if (!m.has(w.date)) m.set(w.date, []);
+      m.get(w.date)!.push(w);
+    });
     return m;
   }, [board]);
+  const EMPTY_WINDOWS: BusyWindow[] = useMemo(() => [], []);
 
   const published = cycle?.status === "published";
   const canEdit = !!cycle && !published;
@@ -1063,7 +1073,7 @@ export default function SchedulingPage() {
                             slots={row.slots}
                             cycleId={board?.cycleId ?? null}
                             isToday={cell.date === today}
-                            busyUserIds={busyByDateShift.get(`${cell.date}|${s.shiftType}`) ?? new Set()}
+                            busyWindows={busyByDate.get(cell.date) ?? EMPTY_WINDOWS}
                             canEdit={rowCanEdit}
                             canFill={rowCanFill}
                             published={published}
@@ -1151,7 +1161,7 @@ export default function SchedulingPage() {
                             slots={row.slots}
                             cycleId={board.cycleId}
                             isToday={cell.date === today}
-                            busyUserIds={busyByDateShift.get(`${cell.date}|${sg.shiftType}`) ?? new Set()}
+                            busyWindows={busyByDate.get(cell.date) ?? EMPTY_WINDOWS}
                             canEdit={rowCanEdit}
                             canFill={rowCanFill}
                             published={published}

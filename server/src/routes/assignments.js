@@ -6,6 +6,7 @@ import {
   weekdayOf, isWeekendMandatory, resolveShiftTimes, precedingWeekendShifts,
 } from "../scheduleRules.js";
 import { canEditRestaurant } from "../access.js";
+import { findTimeConflict, conflictMessage, isConflictCode, listOverlaps } from "../conflicts.js";
 import { openVagaForSlot, openVagasForCycle } from "../demand.js";
 
 // Schedule assignments — the escala (§3.3). Coordinators/administrators manage any
@@ -15,6 +16,9 @@ router.use(requireAuth);
 // Roles allowed to build the schedule. Restaurant scope is enforced per-request
 // (a manager may only touch their own restaurant — see canEditRestaurant).
 const requireSchedulers = requireRole("coordinator", "administrator", "restaurant_manager");
+
+// HH:MM (seconds tolerated) — explicit slot hours sent by the schedule builder.
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/;
 
 const COLS = `id, cycle_id as "cycleId", restaurant_id as "restaurantId",
   user_id as "userId", date::text as date, shift_type as "shiftType",
@@ -49,6 +53,19 @@ router.get("/", async (req, res) => {
   res.json(rows);
 });
 
+// GET /api/assignments/conflicts — every overlapping pair still in the escala.
+// Rows created before the overlap rule existed are not auto-corrected (dropping
+// someone's shift silently is worse than the conflict): coordination resolves them
+// here, and the database constraint can then be enabled by re-running the migration.
+router.get("/conflicts", requireRole("coordinator", "administrator"), async (_req, res) => {
+  try {
+    res.json(await listOverlaps());
+  } catch (e) {
+    console.error("conflicts audit error:", e.message);
+    res.status(500).json({ error: "Falha ao listar conflitos de escala." });
+  }
+});
+
 // POST /api/assignments — assign a freelancer to a slot.
 // Enforces restaurant scope (managers → own restaurant) and the schedule-conflict
 // rule (§3.3), and flags weekend-mandatory shifts (§8.2); returns a non-blocking
@@ -71,27 +88,31 @@ router.post("/", requireSchedulers, async (req, res) => {
       });
     }
 
-    // Conflict (§3.3): same freelancer already on this date+shift (any restaurant).
-    const clash = await one(
-      `select a.id, r.name as "restaurantName"
-         from public.schedule_assignments a
-         left join public.restaurants r on r.id = a.restaurant_id
-        where a.user_id = $1 and a.date = $2 and a.shift_type = $3 and a.status <> 'cancelled'`,
-      [b.userId, b.date, b.shiftType],
-    );
-    if (clash) {
-      return res.status(409).json({
-        error: "schedule_conflict",
-        message: `Conflito de escala: já alocado neste turno${clash.restaurantName ? ` em ${clash.restaurantName}` : ""}.`,
-        conflictRestaurant: clash.restaurantName ?? null,
-      });
+    // The hours decide the conflict, so they are resolved BEFORE the check. An
+    // explicit slot (the coordinator picked a named window in the popover) wins over
+    // the restaurant's primary template.
+    if ((b.startTime && !TIME_RE.test(b.startTime)) || (b.endTime && !TIME_RE.test(b.endTime))) {
+      return res.status(400).json({ error: "Invalid shift time (expected HH:MM)" });
     }
-
     const weekday = weekdayOf(b.date);
     const weekendMandatory = isWeekendMandatory(weekday, b.shiftType);
     const times = b.startTime && b.endTime
       ? { startTime: b.startTime, endTime: b.endTime }
       : await resolveShiftTimes(b.restaurantId, b.shiftType);
+
+    // Conflict (§3.3): the freelancer already works overlapping HOURS that day, at
+    // any restaurant. Comparing shift_type instead let a 14:00–22:00 "lunch" coexist
+    // with an 18:00–22:00 "dinner" elsewhere (client 2026-09-01).
+    const clash = await findTimeConflict({
+      userId: b.userId, date: b.date, startTime: times.startTime, endTime: times.endTime,
+    });
+    if (clash) {
+      return res.status(409).json({
+        error: "schedule_conflict",
+        message: conflictMessage(clash, "este freelancer já está"),
+        conflictRestaurant: clash.restaurantName ?? null,
+      });
+    }
 
     // The cycle's publish state decides both attribution and whether the shift goes
     // live now. While the cycle is still 'open' (the coordinator is BUILDING), the
@@ -173,9 +194,13 @@ router.post("/", requireSchedulers, async (req, res) => {
 
     res.status(201).json({ ...row, eligibilityWarning });
   } catch (e) {
-    // Unique-constraint race (same user, same slot) → treat as conflict, else 500.
-    if (String(e.code) === "23505") {
-      return res.status(409).json({ error: "schedule_conflict", message: "Conflito de escala: já alocado neste turno." });
+    // Lost a race against a concurrent insert — the database guards (overlap
+    // exclusion / one-per-slot unique) rejected it. Report it as the conflict it is.
+    if (isConflictCode(e)) {
+      return res.status(409).json({
+        error: "schedule_conflict",
+        message: "Conflito de horário: este freelancer acabou de ser escalado em um turno que cruza com este.",
+      });
     }
     console.error("Assign error:", e.message);
     res.status(500).json({ error: "Falha ao alocar. Tente novamente." });

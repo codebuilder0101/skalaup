@@ -161,11 +161,18 @@ async function seedScheduling() {
     ];
     for (const [shift, st, et, uid] of todaySlots) {
       if (!uid) continue;
+      // Re-runnable without ON CONFLICT: the one-per-(user,date,shift_type) unique
+      // index it used to target is gone — the rule is now "no overlapping hours"
+      // (section 30 of the schema), which no unique index can express.
       await pool.query(
         `insert into public.schedule_assignments
            (cycle_id, restaurant_id, user_id, date, shift_type, start_time, end_time, status, assigned_via, published_at)
-         values ($1,$2,$3,$4,$5,$6,$7,'published','coordinator', now())
-         on conflict (user_id, date, shift_type) where status <> 'cancelled' do nothing`,
+         select $1,$2,$3,$4,$5,$6,$7,'published','coordinator', now()
+          where not exists (
+            select 1 from public.schedule_assignments a
+             where a.user_id = $3 and a.date = $4 and a.status <> 'cancelled'
+               and public.assignment_window(a.date, a.start_time, a.end_time)
+                   && public.assignment_window($4::date, $6::time, $7::time))`,
         [cycle.id, centro.id, uid, today, shift, st, et],
       );
     }

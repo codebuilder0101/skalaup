@@ -379,11 +379,14 @@ alter table public.schedule_assignments add constraint schedule_assignments_assi
 
 -- The plain unique(user_id,date,shift_type) also blocked CANCELLED rows, so once a
 -- freelancer was removed from a slot they could not be re-added (breaks remove/
--- re-assign and waiting-list fill, §3.3/§3.4). Replace it with a partial unique
--- index that only constrains ACTIVE (non-cancelled) assignments. Idempotent.
+-- re-assign and waiting-list fill, §3.3/§3.4).
 alter table public.schedule_assignments drop constraint if exists schedule_assignments_user_id_date_shift_type_key;
-create unique index if not exists uq_assign_active_user_slot
-  on public.schedule_assignments(user_id, date, shift_type) where status <> 'cancelled';
+-- Its partial-index replacement (uq_assign_active_user_slot) is in turn superseded by
+-- the time-overlap rule in section 30, and is no longer created here. "One lunch per
+-- day" was never a real rule: SIX runs 08:30–13:00 and MANÉ BSB 13:00–21:00 — two
+-- distinct working hours the same person may legitimately work back to back (client
+-- 2026-09-01). Existing databases keep the index until section 30 has installed the
+-- overlap constraint that replaces it, so the table is never left unguarded.
 
 -- Deferred schedule-change notifications (client 2026-07-20): after the escala is
 -- published, edits stay live but the affected freelancer is NOT notified until the
@@ -1061,3 +1064,57 @@ end $$;
 -- template hours (behavior unchanged for existing overrides).
 alter table public.demand_overrides add column if not exists start_time time;
 alter table public.demand_overrides add column if not exists end_time   time;
+
+-- =============================================================================
+-- 30. SCHEDULE TIME CONFLICTS (client 2026-09-01)
+-- =============================================================================
+-- A person can only be in one place at a time. The original guard was
+-- unique(user_id, date, shift_type) — it compared the LABEL of the meal period,
+-- never the clock. A restaurant may run a 14:00–22:00 "lunch" (MANÉ BSB, slot
+-- "Freela 3"), which overlaps another restaurant's 18:00–22:00 "dinner": different
+-- shift_type, so the unique index let it through and the same freelancer ended up
+-- scheduled at two addresses at once. This adds the real rule.
+
+create extension if not exists btree_gist;
+
+-- The clock window of an assignment, as a timestamp range. An end that is not after
+-- the start is read as crossing midnight (19:00–01:00 → next day). IMMUTABLE so it
+-- can back a GiST index.
+create or replace function public.assignment_window(d date, starts time, ends time)
+returns tsrange language sql immutable as $$
+  select tsrange(
+    (d + starts),
+    case when ends > starts then (d + ends) else (d + ends + interval '1 day') end,
+    '[)');
+$$;
+
+-- Same freelancer + overlapping time window = impossible, whatever the shift_type
+-- or restaurant. Cancelled rows are exempt so a removed shift can be re-assigned.
+-- Adjacent windows (12:00–17:00 then 17:00–22:00) do NOT overlap and stay allowed.
+-- If the table still holds legacy overlaps the constraint cannot be created; the
+-- migration warns instead of failing so it stays re-runnable — clear them with
+-- GET /api/assignments/conflicts and run the migration again.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'schedule_assignments_no_overlap') then
+    begin
+      alter table public.schedule_assignments
+        add constraint schedule_assignments_no_overlap
+        exclude using gist (
+          user_id with =,
+          public.assignment_window(date, start_time, end_time) with &&
+        ) where (status <> 'cancelled');
+    exception when exclusion_violation then
+      raise warning 'schedule_assignments_no_overlap NOT created: overlapping assignments still exist. Resolve them (GET /api/assignments/conflicts) and re-run the migration. Until then the application-level checks are the only guard.';
+    end;
+  end if;
+end $$;
+
+-- Retire the old label-based guard (client 2026-09-01). It enforced one row per
+-- (user, date, shift_type), which is not a real rule: SIX runs 08:30–13:00 and MANÉ
+-- BSB 13:00–21:00 — two distinct working hours the same person may legitimately work
+-- back to back, both filed as "lunch". The overlap constraint above replaces it and
+-- is strictly better (a duplicate slot always overlaps itself), so this index only
+-- ever produced false refusals. Dropped unconditionally: while legacy overlaps still
+-- block the constraint, findTimeConflict() on all six scheduling paths is the guard.
+drop index if exists public.uq_assign_active_user_slot;
